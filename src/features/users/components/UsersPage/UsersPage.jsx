@@ -336,7 +336,6 @@ const AccessModal = ({ user, accessKeys, roles, onSave, onClose, error }) => {
   React.useEffect(() => {
     if (!user?.role) {
       setLoading(false);
-      setLoaded(true);
       return;
     }
     const load = async () => {
@@ -349,7 +348,6 @@ const AccessModal = ({ user, accessKeys, roles, onSave, onClose, error }) => {
         setSelected(new Set());
       } finally {
         setLoading(false);
-        setLoaded(true);
       }
     };
     load();
