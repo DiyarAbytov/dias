@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { useServerQuery } from '../../../../shared/lib';
 import { ServerList, FilterBar, ConfirmModal } from '../../../../shared/ui';
-import { createUser, updateUser, deleteUser } from '../../api/usersApi';
+import { createUser, updateUser, deleteUser, updateUserAccess } from '../../api/usersApi';
 import { createRole, updateRole, deleteRole } from '../../api/rolesApi';
 import './UsersPage.scss';
 
@@ -45,6 +45,7 @@ const UsersPage = () => {
   });
   const [userModal, setUserModal] = useState(null);
   const [roleModal, setRoleModal] = useState(null);
+  const [accessModal, setAccessModal] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [submitError, setSubmitError] = useState('');
 
@@ -98,6 +99,18 @@ const UsersPage = () => {
       refetchRoles();
     } catch (err) {
       setSubmitError(err.response?.data?.error || JSON.stringify(err.response?.data?.details || {}) || 'Ошибка');
+    }
+  };
+
+  const handleAccessSave = async (userId, accessKeys) => {
+    setSubmitError('');
+    try {
+      await updateUserAccess(userId, accessKeys);
+      setAccessModal(null);
+      refetch();
+      refetchRoles();
+    } catch (err) {
+      setSubmitError(err.response?.data?.error || 'Ошибка сохранения доступов');
     }
   };
 
@@ -174,7 +187,6 @@ const UsersPage = () => {
                   <th>Имя</th>
                   <th>Email</th>
                   <th>Роль</th>
-                  <th>Активен</th>
                   <th></th>
                 </tr>
               </thead>
@@ -184,9 +196,15 @@ const UsersPage = () => {
                     <td>{u.id}</td>
                     <td>{u.name}</td>
                     <td>{u.email}</td>
-                    <td>{u.role_name ?? u.role}</td>
-                    <td>{u.is_active ? 'Да' : 'Нет'}</td>
+                    <td>{u.role_name ?? (roles.find((r) => r.id === u.role)?.name) ?? '—'}</td>
                     <td>
+                      <button
+                        type="button"
+                        className="btn btn--sm"
+                        onClick={() => setAccessModal(u)}
+                      >
+                        Доступы
+                      </button>
                       <button
                         type="button"
                         className="btn btn--sm"
@@ -278,6 +296,17 @@ const UsersPage = () => {
         />
       )}
 
+      {accessModal && (
+        <AccessModal
+          user={accessModal}
+          accessKeys={ACCESS_KEYS}
+          roles={roles}
+          onSave={handleAccessSave}
+          onClose={() => { setAccessModal(null); setSubmitError(''); }}
+          error={submitError}
+        />
+      )}
+
       {roleModal && (
         <RoleFormModal
           role={roleModal?.id ? roleModal : null}
@@ -300,12 +329,92 @@ const UsersPage = () => {
   );
 };
 
+const AccessModal = ({ user, accessKeys, roles, onSave, onClose, error }) => {
+  const [selected, setSelected] = useState(new Set());
+  const [loading, setLoading] = useState(true);
+
+  React.useEffect(() => {
+    if (!user?.role) {
+      setLoading(false);
+      setLoaded(true);
+      return;
+    }
+    const load = async () => {
+      try {
+        const { apiClient } = await import('../../../../shared/api');
+        const res = await apiClient.get(`/roles/${user.role}/`);
+        const acc = res.data?.accesses || [];
+        setSelected(new Set(acc.map((a) => a.access_key || a)));
+      } catch {
+        setSelected(new Set());
+      } finally {
+        setLoading(false);
+        setLoaded(true);
+      }
+    };
+    load();
+  }, [user?.role]);
+
+  const toggle = (key) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const hasRole = !!user?.role;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
+        <h3>Доступы: {user?.name}</h3>
+        {!hasRole ? (
+          <>
+            <p>Назначьте роль пользователю в форме «Изменить», затем настройте доступы.</p>
+            <div className="modal__actions">
+              <button type="button" onClick={onClose}>Закрыть</button>
+            </div>
+          </>
+        ) : loading ? (
+          <p>Загрузка...</p>
+        ) : (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              onSave(user.id, Array.from(selected));
+            }}
+          >
+            <div className="access-keys">
+              {accessKeys.map((key) => (
+                <label key={key} className="access-keys__item">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(key)}
+                    onChange={() => toggle(key)}
+                  />
+                  {key}
+                </label>
+              ))}
+            </div>
+            {error && <p className="modal__error">{error}</p>}
+            <div className="modal__actions">
+              <button type="button" onClick={onClose}>Отмена</button>
+              <button type="submit">Сохранить</button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const UserFormModal = ({ user, roles, onSubmit, onClose, error }) => {
   const [name, setName] = useState(user?.name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState(user?.role ? String(user.role) : '');
-  const [isActive, setIsActive] = useState(user?.is_active ?? true);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -314,7 +423,7 @@ const UserFormModal = ({ user, roles, onSubmit, onClose, error }) => {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            const data = { name, email, role: role ? Number(role) : null, is_active: isActive };
+            const data = { name, email, role: role ? Number(role) : null, is_active: true };
             if (password) data.password = password;
             onSubmit(data);
           }}
@@ -338,10 +447,6 @@ const UserFormModal = ({ user, roles, onSubmit, onClose, error }) => {
               <option key={r.id} value={r.id}>{r.name}</option>
             ))}
           </select>
-          <label>
-            <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-            Активен
-          </label>
           {error && <p className="modal__error">{error}</p>}
           <div className="modal__actions">
             <button type="button" onClick={onClose}>Отмена</button>
