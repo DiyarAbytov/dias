@@ -1,0 +1,27 @@
+@use '../../../../shared/styles/variables' as *;
+
+.analytics-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.analytics-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+
+  &__label {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--accent);
+  }
+
+  &__value {
+    margin: 0;
+    font-size: 0.85rem;
+    overflow-x: auto;
+    color: var(--muted);
+  }
+}

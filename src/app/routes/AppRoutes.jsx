@@ -2,12 +2,12 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from '../components/ProtectedRoute';
 import MainLayout from '../components/MainLayout';
-import HomePage from '../components/HomePage';
 import { LoginPage } from '../../features/auth';
 import { LinesPage } from '../../features/lines';
 import { UsersPage } from '../../features/users';
 import { OrdersPage } from '../../features/orders';
 import { ShipmentsPage } from '../../features/shipments';
+import { AnalyticsPage } from '../../features/analytics';
 
 const PlaceholderPage = ({ title }) => (
   <div className="page">
@@ -27,7 +27,7 @@ const AppRoutes = () => (
         </ProtectedRoute>
       }
     >
-      <Route index element={<HomePage />} />
+      <Route index element={<Navigate to="/users" replace />} />
       <Route path="users" element={<ProtectedRoute accessKey="users"><UsersPage /></ProtectedRoute>} />
       <Route path="lines" element={<ProtectedRoute accessKey="lines"><LinesPage /></ProtectedRoute>} />
       <Route path="orders" element={<ProtectedRoute accessKey="orders"><OrdersPage /></ProtectedRoute>} />
@@ -40,9 +40,9 @@ const AppRoutes = () => (
       <Route path="warehouse" element={<ProtectedRoute accessKey="warehouse"><PlaceholderPage title="Склад ГП" /></ProtectedRoute>} />
       <Route path="clients" element={<ProtectedRoute accessKey="clients"><PlaceholderPage title="Клиенты" /></ProtectedRoute>} />
       <Route path="sales" element={<ProtectedRoute accessKey="sales"><PlaceholderPage title="Продажи" /></ProtectedRoute>} />
-      <Route path="analytics" element={<ProtectedRoute accessKey="analytics"><PlaceholderPage title="Аналитика" /></ProtectedRoute>} />
+      <Route path="analytics" element={<ProtectedRoute accessKey="analytics"><AnalyticsPage /></ProtectedRoute>} />
     </Route>
-    <Route path="*" element={<Navigate to="/" replace />} />
+    <Route path="*" element={<Navigate to="/users" replace />} />
   </Routes>
 );
 

@@ -4,8 +4,10 @@ import { API_BASE } from '../config/api';
 const client = axios.create({
   baseURL: API_BASE,
   headers: {
-    'Content-Type': 'application/json',
+    'Content-Type': 'application/json; charset=utf-8',
+    'Accept': 'application/json; charset=utf-8',
   },
+  responseType: 'json',
 });
 
 client.interceptors.request.use((config) => {
@@ -21,7 +23,6 @@ client.interceptors.response.use(
   (err) => {
     if (err.response?.status === 401) {
       localStorage.removeItem('token');
-      localStorage.removeItem('user');
       window.location.href = '/login';
     }
     return Promise.reject(err);
