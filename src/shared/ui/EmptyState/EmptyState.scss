@@ -1,0 +1,27 @@
+@use '../../styles/variables' as *;
+@use '../../styles/mixins' as *;
+
+.empty-state {
+  @include flex-center;
+  flex-direction: column;
+  padding: 3rem 2rem;
+  text-align: center;
+  color: var(--muted);
+
+  &__icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.6;
+  }
+
+  &__title {
+    margin: 0 0 0.5rem;
+    font-size: 1.1rem;
+    color: var(--text);
+  }
+
+  &__desc {
+    margin: 0;
+    font-size: 0.9rem;
+  }
+}

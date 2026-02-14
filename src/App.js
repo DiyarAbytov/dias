@@ -1,9 +1,12 @@
-import React from 'react'
+import React from 'react';
+import AppProviders from './app/providers';
+import AppRoutes from './app/routes/AppRoutes';
+import './app/index.scss';
 
-function App() {
-  return (
-    <div>App</div>
-  )
-}
+const App = () => (
+  <AppProviders>
+    <AppRoutes />
+  </AppProviders>
+);
 
-export default App
+export default App;

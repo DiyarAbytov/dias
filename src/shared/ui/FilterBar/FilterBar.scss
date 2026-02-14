@@ -1,0 +1,31 @@
+@use '../../styles/variables' as *;
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+
+  &__item {
+    flex-shrink: 0;
+  }
+
+  &__input,
+  &__select {
+    padding: 0.5rem 0.75rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.9rem;
+    min-width: 120px;
+
+    &::placeholder {
+      color: var(--muted);
+    }
+  }
+
+  &__select {
+    cursor: pointer;
+  }
+}

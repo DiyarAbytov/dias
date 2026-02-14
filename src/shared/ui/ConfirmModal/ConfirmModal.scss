@@ -1,0 +1,62 @@
+@use '../../styles/variables' as *;
+@use '../../styles/mixins' as *;
+
+.confirm-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  @include flex-center;
+  z-index: 1000;
+}
+
+.confirm-modal {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  min-width: 320px;
+  max-width: 90vw;
+
+  &__title {
+    margin: 0 0 0.5rem;
+    font-size: 1.1rem;
+  }
+
+  &__message {
+    margin: 0 0 1.5rem;
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+
+  &__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+
+  &__btn {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.95rem;
+
+    &--cancel {
+      background: var(--border);
+      color: var(--text);
+
+      &:hover {
+        background: var(--muted);
+      }
+    }
+
+    &--confirm {
+      background: var(--danger);
+      color: #fff;
+
+      &:hover {
+        opacity: 0.9;
+      }
+    }
+  }
+}

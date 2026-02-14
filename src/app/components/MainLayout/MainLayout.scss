@@ -1,0 +1,78 @@
+@use '../../../shared/styles/variables' as *;
+@use '../../../shared/styles/mixins' as *;
+
+.main-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.main-layout__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.main-layout__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.main-layout__link {
+  padding: 0.5rem 0.75rem;
+  color: var(--muted);
+  text-decoration: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+
+  &:hover {
+    color: var(--text);
+    background: var(--border);
+  }
+
+  &--active {
+    color: var(--accent);
+    background: rgba(88, 166, 255, 0.1);
+  }
+}
+
+.main-layout__user {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.main-layout__logout {
+  padding: 0.4rem 0.75rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+
+  &:hover {
+    color: var(--danger);
+    border-color: var(--danger);
+  }
+}
+
+.main-layout__main {
+  flex: 1;
+  padding: 1.5rem;
+  overflow: auto;
+
+  @include mobile {
+    padding: 1rem;
+  }
+}
