@@ -42,7 +42,10 @@ export const useServerQuery = (url, queryState, options = {}) => {
     } catch (err) {
       if (err.name === 'AbortError' || err.code === 'ERR_CANCELED') return;
       if (id !== requestIdRef.current) return;
-      setError(err.response?.data || { error: err.message, code: 'UNKNOWN' });
+      const payload = err.response?.data && typeof err.response.data === 'object'
+        ? { ...err.response.data, status: err.response.status }
+        : { error: err.message, code: 'UNKNOWN', status: err.response?.status };
+      setError(payload);
     } finally {
       if (id === requestIdRef.current) setLoading(false);
     }

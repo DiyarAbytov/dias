@@ -172,8 +172,8 @@ const ChemistryPage = () => {
               </button>
             </div>
             {planLoading && <Loading />}
-            {planError && <ErrorState error={planError} onRetry={refetchPlan} />}
-            {!planLoading && !planError && (
+            {planError && planError.status !== 404 && <ErrorState error={planError} onRetry={refetchPlan} />}
+            {!planLoading && (!planError || planError.status === 404) && (
               tasks.length === 0 ? (
                 <EmptyState title="Нет данных" />
               ) : (
@@ -232,8 +232,8 @@ const ChemistryPage = () => {
             </div>
           </div>
           {dirLoading && <Loading />}
-          {dirError && <ErrorState error={dirError} onRetry={refetchDir} />}
-          {!dirLoading && !dirError && (
+          {dirError && dirError.status !== 404 && <ErrorState error={dirError} onRetry={refetchDir} />}
+          {!dirLoading && (!dirError || dirError.status === 404) && (
             elements.length === 0 ? (
               <EmptyState title="Нет данных" />
             ) : (
@@ -241,14 +241,12 @@ const ChemistryPage = () => {
                 <div className="chemistry-table__header">
                   <span className="chemistry-table__th">НАЗВАНИЕ</span>
                   <span className="chemistry-table__th">ЕД.</span>
-                  <span className="chemistry-table__th">СОСТАВ</span>
                   <span className="chemistry-table__th chemistry-table__th--actions">ДЕЙСТВИЯ</span>
                 </div>
                 {elements.map((el) => (
                   <div key={el.id} className="chemistry-table__row">
                     <span className="chemistry-table__name">{el.name}</span>
                     <span className="chemistry-table__unit">{el.unit || 'кг'}</span>
-                    <span>{el.composition || '—'}</span>
                     <div className="chemistry-table__actions">
                       <button type="button" className="btn btn--secondary btn--sm" onClick={() => setDirModal(el)}>
                         Редактировать
@@ -341,7 +339,6 @@ const DirModal = ({ item, onSubmit, onClose, error }) => {
   const isEdit = !!item?.id;
   const [name, setName] = useState(item?.name ?? '');
   const [unit, setUnit] = useState(item?.unit ?? 'кг');
-  const [composition, setComposition] = useState(item?.composition ?? '');
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -350,7 +347,7 @@ const DirModal = ({ item, onSubmit, onClose, error }) => {
           <h3>{isEdit ? 'Редактировать' : 'Создать'}</h3>
           <button type="button" className="modal__close" onClick={onClose} aria-label="Закрыть">×</button>
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); onSubmit({ name, unit: unit || undefined, composition: composition || undefined }); }}>
+        <form onSubmit={(e) => { e.preventDefault(); onSubmit({ name, unit: unit || undefined }); }}>
           <label>Название</label>
           <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="Название" />
           <label>Ед.</label>
@@ -359,8 +356,6 @@ const DirModal = ({ item, onSubmit, onClose, error }) => {
               <option key={u.value} value={u.value}>{u.label}</option>
             ))}
           </select>
-          <label>Состав</label>
-          <input value={composition} onChange={(e) => setComposition(e.target.value)} placeholder="Состав" />
           {error && <p className="modal__error">{error}</p>}
           <div className="modal__actions">
             <button type="submit" className="btn btn--primary">{isEdit ? 'Сохранить' : 'Создать'}</button>
