@@ -10,6 +10,7 @@ import { ShipmentsPage } from '../../features/shipments';
 import { AnalyticsPage } from '../../features/analytics';
 import { MaterialsPage } from '../../features/materials';
 import { ChemistryPage } from '../../features/chemistry';
+import { RecipesPage } from '../../features/recipes';
 
 const PlaceholderPage = ({ title }) => (
   <div className="page">
@@ -36,7 +37,7 @@ const AppRoutes = () => (
       <Route path="shipments" element={<ProtectedRoute accessKey="shipments"><ShipmentsPage /></ProtectedRoute>} />
       <Route path="materials" element={<ProtectedRoute accessKey="materials"><MaterialsPage /></ProtectedRoute>} />
       <Route path="chemistry" element={<ProtectedRoute accessKey="chemistry"><ChemistryPage /></ProtectedRoute>} />
-      <Route path="recipes" element={<ProtectedRoute accessKey="recipes"><PlaceholderPage title="Рецепты" /></ProtectedRoute>} />
+      <Route path="recipes" element={<ProtectedRoute accessKey="recipes"><RecipesPage /></ProtectedRoute>} />
       <Route path="production" element={<ProtectedRoute accessKey="production"><PlaceholderPage title="Производство" /></ProtectedRoute>} />
       <Route path="otk" element={<ProtectedRoute accessKey="otk"><PlaceholderPage title="ОТК" /></ProtectedRoute>} />
       <Route path="warehouse" element={<ProtectedRoute accessKey="warehouse"><PlaceholderPage title="Склад ГП" /></ProtectedRoute>} />

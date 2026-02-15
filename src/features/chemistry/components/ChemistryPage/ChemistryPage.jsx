@@ -27,6 +27,7 @@ const ChemistryPage = () => {
   const [planModal, setPlanModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [submitError, setSubmitError] = useState('');
+  const [confirmingIds, setConfirmingIds] = useState(new Set());
 
   const { items: elements, loading: dirLoading, error: dirError, refetch: refetchDir } = useServerQuery(
     'chemistry/elements/',
@@ -36,41 +37,75 @@ const ChemistryPage = () => {
 
   const { items: tasks, loading: planLoading, error: planError, refetch: refetchPlan } = useServerQuery(
     'chemistry/tasks/',
-    activeTab === 'plan' ? planQuery : { page_size: 1 },
-    { enabled: activeTab === 'plan' }
+    activeTab === 'plan' ? planQuery : activeTab === 'balances' ? { page_size: 500 } : { page_size: 1 },
+    { enabled: activeTab === 'plan' || activeTab === 'balances' }
   );
 
-  const [balances, setBalances] = useState([]);
-  const [balancesLoading, setBalancesLoading] = useState(false);
   const [balancesSearch, setBalancesSearch] = useState('');
 
-  useEffect(() => {
-    if (activeTab !== 'balances') return;
-    setBalancesLoading(true);
-    apiClient.get('chemistry/balances/').then((res) => {
-      setBalances(res.data?.items || []);
-    }).catch(() => setBalances([])).finally(() => setBalancesLoading(false));
-  }, [activeTab]);
+  const formatDate = (d) => (d ? (typeof d === 'string' ? d.slice(0, 10) : d) : '—');
+
+  const renderTaskElements = (task) => {
+    const comp = task.components || task.elements || [];
+    if (Array.isArray(comp) && comp.length) {
+      return comp.map((c) => `${c.element_name || c.name || '—'} — ${c.quantity} ${c.unit || 'кг'}`).join(', ');
+    }
+    const name = task.chemistry_name || task.chemistry_name_ || (task.chemistry && typeof task.chemistry === 'object' ? task.chemistry.name : null);
+    if (name != null) return `${name} — ${task.quantity} ${task.unit || 'кг'}`;
+    return task.elements_display || (task.quantity != null ? `ID ${task.chemistry} — ${task.quantity} ${task.unit || 'кг'}` : '—');
+  };
+
+  const taskStatus = (task) => (task.status === 'completed' || task.status === 'ВЫПОЛНЕНО' || task.status === 'done') ? 'completed' : 'pending';
+
+  const groupTasksByPlan = (list) => {
+    const groups = {};
+    list.forEach((t) => {
+      const key = `${t.name || t.title || ''}|${formatDate(t.deadline || t.term)}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(t);
+    });
+    return Object.values(groups).map((grp) => ({
+      name: grp[0].name || grp[0].title,
+      deadline: grp[0].deadline || grp[0].term,
+      tasks: grp,
+      status: grp.some((t) => taskStatus(t) === 'pending') ? 'pending' : 'completed',
+      elementsText: grp.map((t) => renderTaskElements(t)).join(', '),
+      quantityText: grp.map((t) => `${t.quantity} ${t.unit || 'кг'}`).join(', '),
+    }));
+  };
+
+  const planGroups = groupTasksByPlan(tasks);
+  const completedPlanGroups = planGroups.filter((grp) => grp.status === 'completed');
 
   const balancesFiltered = balancesSearch.trim()
-    ? balances.filter((b) => {
+    ? completedPlanGroups.filter((grp) => {
         const s = balancesSearch.trim().toLowerCase();
-        return (b.element_name || b.chemical_element || '').toLowerCase().includes(s) ||
-          (b.batch || '').toLowerCase().includes(s);
+        return (grp.name || '').toLowerCase().includes(s) || grp.elementsText.toLowerCase().includes(s);
       })
-    : balances;
+    : completedPlanGroups;
 
   const chemistryApiError = (err) => {
     if (err.response?.status === 404) {
       return 'Сервис «Хим. элементы» пока не подключён. Добавьте на сервере эндпоинты: /api/chemistry/elements/, /api/chemistry/tasks/, /api/chemistry/balances/';
     }
     const data = err.response?.data;
-    if (data && typeof data === 'object' && !data.error) {
-      const parts = Object.entries(data).map(([k, v]) => {
+    if (data && typeof data === 'object') {
+      if (data.code === 'ALREADY_DONE') return data.error || 'Задание уже выполнено.';
+      if (data.code === 'INSUFFICIENT_STOCK') {
+        const base = data.error || 'Недостаточно остатков сырья.';
+        const missing = data.missing;
+        if (Array.isArray(missing) && missing.length) {
+          const details = missing.map((m) => (typeof m === 'object' ? `${m.component || m.raw_material}: требуется ${m.required} ${m.unit || ''}, доступно ${m.available ?? 0}` : String(m))).join('; ');
+          return `${base} ${details}. Сделайте приход на складе сырья.`;
+        }
+        return `${base} Сделайте приход на складе сырья.`;
+      }
+      if (data.error) return data.error;
+      const parts = Object.entries(data).filter(([k]) => k !== 'error' && k !== 'code').map(([k, v]) => {
         const msg = Array.isArray(v) ? v.map((e) => (e && typeof e === 'object' ? e.string : e)).join(', ') : String(v);
         return `${k}: ${msg}`;
       });
-      return parts.join('; ');
+      if (parts.length) return parts.join('; ');
     }
     return data?.error || 'Ошибка';
   };
@@ -147,41 +182,11 @@ const ChemistryPage = () => {
     }
   };
 
-  const formatDate = (d) => (d ? (typeof d === 'string' ? d.slice(0, 10) : d) : '—');
-
-  const renderTaskElements = (task) => {
-    const comp = task.components || task.elements || [];
-    if (Array.isArray(comp) && comp.length) {
-      return comp.map((c) => `${c.element_name || c.name || '—'} — ${c.quantity} ${c.unit || 'кг'}`).join(', ');
-    }
-    const name = task.chemistry_name || task.chemistry_name_ || (task.chemistry && typeof task.chemistry === 'object' ? task.chemistry.name : null);
-    if (name != null) return `${name} — ${task.quantity} ${task.unit || 'кг'}`;
-    return task.elements_display || (task.quantity != null ? `ID ${task.chemistry} — ${task.quantity} ${task.unit || 'кг'}` : '—');
-  };
-
-  const taskStatus = (task) => task.status === 'completed' || task.status === 'ВЫПОЛНЕНО' ? 'completed' : 'pending';
-
-  const groupTasksByPlan = (list) => {
-    const groups = {};
-    list.forEach((t) => {
-      const key = `${t.name || t.title || ''}|${formatDate(t.deadline || t.term)}`;
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(t);
-    });
-    return Object.values(groups).map((grp) => ({
-      name: grp[0].name || grp[0].title,
-      deadline: grp[0].deadline || grp[0].term,
-      tasks: grp,
-      status: grp.some((t) => taskStatus(t) === 'pending') ? 'pending' : 'completed',
-      elementsText: grp.map((t) => renderTaskElements(t)).join(', '),
-    }));
-  };
-
-  const planGroups = groupTasksByPlan(tasks);
-
   const handleConfirmGroup = async (group) => {
     const pending = group.tasks.filter((t) => taskStatus(t) === 'pending');
     if (pending.length === 0) return;
+    const ids = pending.map((t) => t.id);
+    setConfirmingIds((prev) => new Set([...prev, ...ids]));
     setSubmitError('');
     try {
       for (const t of pending) {
@@ -190,6 +195,12 @@ const ChemistryPage = () => {
       refetchPlan();
     } catch (err) {
       setSubmitError(chemistryApiError(err));
+    } finally {
+      setConfirmingIds((prev) => {
+        const next = new Set(prev);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
     }
   };
 
@@ -245,6 +256,12 @@ const ChemistryPage = () => {
                 Добавить
               </button>
             </div>
+            {submitError && activeTab === 'plan' && (
+              <div className="chemistry-card__error">
+                {submitError}
+                <button type="button" className="chemistry-card__error-dismiss" onClick={() => setSubmitError('')} aria-label="Закрыть">×</button>
+              </div>
+            )}
             {planLoading && <Loading />}
             {planError && planError.status !== 404 && <ErrorState error={planError} onRetry={refetchPlan} />}
             {!planLoading && (!planError || planError.status === 404) && (
@@ -255,7 +272,6 @@ const ChemistryPage = () => {
                   <div className="chemistry-table__header">
                     <span className="chemistry-table__th">ЗАДАНИЕ</span>
                     <span className="chemistry-table__th">ХИМ. ЭЛЕМЕНТЫ</span>
-                    <span className="chemistry-table__th">СРОК</span>
                     <span className="chemistry-table__th">СТАТУС</span>
                     <span className="chemistry-table__th chemistry-table__th--actions">ДЕЙСТВИЯ</span>
                   </div>
@@ -263,7 +279,6 @@ const ChemistryPage = () => {
                     <div key={`${grp.name}-${grp.deadline}-${idx}`} className="chemistry-table__row">
                       <span className="chemistry-table__name">{grp.name || '—'}</span>
                       <span className="chemistry-table__elements">{grp.elementsText || '—'}</span>
-                      <span className="chemistry-table__date">{formatDate(grp.deadline)}</span>
                       <span>
                         <span className={`chemistry-table__badge chemistry-table__badge--${grp.status}`}>
                           {grp.status === 'completed' ? 'ВЫПОЛНЕНО' : 'В РАБОТЕ'}
@@ -271,8 +286,13 @@ const ChemistryPage = () => {
                       </span>
                       <div className="chemistry-table__actions">
                         {grp.status !== 'completed' && (
-                          <button type="button" className="btn btn--success btn--sm" onClick={() => handleConfirmGroup(grp)}>
-                            Подтвердить
+                          <button
+                            type="button"
+                            className="btn btn--success btn--sm"
+                            onClick={() => handleConfirmGroup(grp)}
+                            disabled={grp.tasks.some((t) => confirmingIds.has(t.id))}
+                          >
+                            {grp.tasks.some((t) => confirmingIds.has(t.id)) ? '…' : 'Подтвердить'}
                           </button>
                         )}
                         <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ type: 'planGroup', group: grp, name: grp.name })}>
@@ -344,33 +364,30 @@ const ChemistryPage = () => {
             <input
               type="text"
               className="chemistry-card__search"
-              placeholder="По названию, партии"
+              placeholder="По названию..."
               value={balancesSearch}
               onChange={(e) => setBalancesSearch(e.target.value)}
             />
           </div>
-          {balancesLoading && <Loading />}
-          {!balancesLoading && (
+          {planLoading && <Loading />}
+          {planError && planError.status !== 404 && <ErrorState error={planError} onRetry={refetchPlan} />}
+          {!planLoading && (!planError || planError.status === 404) && (
             balancesFiltered.length === 0 ? (
-              <EmptyState title="Нет данных" />
+              <EmptyState title="Нет выполненных планов" />
             ) : (
               <div className="chemistry-table chemistry-table--balances">
                 <div className="chemistry-table__header">
-                  <span className="chemistry-table__th">ХИМ. ЭЛЕМЕНТ</span>
-                  <span className="chemistry-table__th">ЕД.</span>
-                  <span className="chemistry-table__th">ВСЕГО</span>
-                  <span className="chemistry-table__th">ПАРТИЯ</span>
-                  <span className="chemistry-table__th">В ПАРТИИ</span>
+                  <span className="chemistry-table__th">ЗАДАНИЕ</span>
+                  <span className="chemistry-table__th">ХИМ. ЭЛЕМЕНТЫ</span>
+                  <span className="chemistry-table__th">КОЛИЧЕСТВО</span>
                   <span className="chemistry-table__th">ДАТА</span>
                 </div>
-                {balancesFiltered.map((b, idx) => (
-                  <div key={b.id ?? idx} className="chemistry-table__row">
-                    <span className="chemistry-table__name">{b.element_name || b.chemical_element || b.name || '—'}</span>
-                    <span>{b.unit || '—'}</span>
-                    <span>{b.total ?? b.balance ?? '—'}</span>
-                    <span>{b.batch || '—'}</span>
-                    <span>{b.in_batch ?? '—'}</span>
-                    <span className="chemistry-table__date">{formatDate(b.date)}</span>
+                {balancesFiltered.map((grp, idx) => (
+                  <div key={`${grp.name}-${grp.deadline}-${idx}`} className="chemistry-table__row">
+                    <span className="chemistry-table__name">{grp.name || '—'}</span>
+                    <span className="chemistry-table__elements">{grp.elementsText}</span>
+                    <span>{grp.quantityText}</span>
+                    <span className="chemistry-table__date">{formatDate(grp.deadline)}</span>
                   </div>
                 ))}
               </div>
