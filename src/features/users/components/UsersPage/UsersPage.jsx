@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { useServerQuery } from '../../../../shared/lib';
 import { ServerList, FilterBar, ConfirmModal } from '../../../../shared/ui';
+import { useAuth } from '../../../auth/model';
 import { createUser, updateUser, deleteUser, updateUserAccess } from '../../api/usersApi';
 import { createRole, updateRole, deleteRole } from '../../api/rolesApi';
 import './UsersPage.scss';
@@ -9,6 +10,22 @@ const ACCESS_KEYS = [
   'users', 'lines', 'materials', 'chemistry', 'recipes', 'orders',
   'production', 'otk', 'warehouse', 'clients', 'sales', 'shipments', 'analytics'
 ];
+
+const ACCESS_LABELS = {
+  users: 'Пользователи',
+  lines: 'Линии',
+  materials: 'Склад сырья',
+  chemistry: 'Химия',
+  recipes: 'Рецепты',
+  orders: 'Заказы',
+  production: 'Производство',
+  otk: 'ОТК',
+  warehouse: 'Склад ГП',
+  clients: 'Клиенты',
+  sales: 'Продажи',
+  shipments: 'Отгрузки',
+  analytics: 'Аналитика',
+};
 
 const USERS_FILTERS = (roleOptions) => [
   { key: 'search', type: 'search', placeholder: 'Поиск по имени, email' },
@@ -49,6 +66,7 @@ const UsersPage = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [submitError, setSubmitError] = useState('');
 
+  const { refetch: refetchAuth } = useAuth();
   const { items: users, meta, loading, error, refetch } = useServerQuery(
     'users/',
     queryState,
@@ -109,8 +127,15 @@ const UsersPage = () => {
       setAccessModal(null);
       refetch();
       refetchRoles();
+      refetchAuth();
     } catch (err) {
-      setSubmitError(err.response?.data?.error || 'Ошибка сохранения доступов');
+      const data = err.response?.data;
+      const msg = data?.error
+        || (data?.access_keys ? data.access_keys.join(', ') : null)
+        || (typeof data?.details === 'object' ? JSON.stringify(data.details) : data?.details)
+        || err.message
+        || 'Ошибка сохранения доступов';
+      setSubmitError(msg);
     }
   };
 
@@ -252,7 +277,6 @@ const UsersPage = () => {
                 <tr>
                   <th>ID</th>
                   <th>Название</th>
-                  <th>Описание</th>
                   <th></th>
                 </tr>
               </thead>
@@ -261,7 +285,6 @@ const UsersPage = () => {
                   <tr key={r.id}>
                     <td>{r.id}</td>
                     <td>{r.name}</td>
-                    <td>{r.description || '—'}</td>
                     <td>
                       <button
                         type="button"
@@ -300,6 +323,7 @@ const UsersPage = () => {
         <AccessModal
           user={accessModal}
           accessKeys={ACCESS_KEYS}
+          accessLabels={ACCESS_LABELS}
           roles={roles}
           onSave={handleAccessSave}
           onClose={() => { setAccessModal(null); setSubmitError(''); }}
@@ -310,7 +334,6 @@ const UsersPage = () => {
       {roleModal && (
         <RoleFormModal
           role={roleModal?.id ? roleModal : null}
-          accessKeys={ACCESS_KEYS}
           onSubmit={handleRoleSubmit}
           onClose={() => { setRoleModal(null); setSubmitError(''); }}
           error={submitError}
@@ -329,9 +352,10 @@ const UsersPage = () => {
   );
 };
 
-const AccessModal = ({ user, accessKeys, roles, onSave, onClose, error }) => {
+const AccessModal = ({ user, accessKeys, accessLabels, roles, onSave, onClose, error }) => {
   const [selected, setSelected] = useState(new Set());
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   React.useEffect(() => {
     if (!user?.role) {
@@ -372,18 +396,25 @@ const AccessModal = ({ user, accessKeys, roles, onSave, onClose, error }) => {
           <>
             <p>Назначьте роль пользователю в форме «Изменить», затем настройте доступы.</p>
             <div className="modal__actions">
-              <button type="button" onClick={onClose}>Закрыть</button>
+              <button type="button" className="btn btn--secondary" onClick={onClose}>Закрыть</button>
             </div>
           </>
         ) : loading ? (
           <p>Загрузка...</p>
         ) : (
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              onSave(user.id, Array.from(selected));
+              if (saving) return;
+              setSaving(true);
+              try {
+                await onSave(user.id, Array.from(selected));
+              } finally {
+                setSaving(false);
+              }
             }}
           >
+            <label className="modal__access-label">Доступы к разделам</label>
             <div className="access-keys">
               {accessKeys.map((key) => (
                 <label key={key} className="access-keys__item">
@@ -392,14 +423,16 @@ const AccessModal = ({ user, accessKeys, roles, onSave, onClose, error }) => {
                     checked={selected.has(key)}
                     onChange={() => toggle(key)}
                   />
-                  {key}
+                  {accessLabels[key] || key}
                 </label>
               ))}
             </div>
             {error && <p className="modal__error">{error}</p>}
             <div className="modal__actions">
-              <button type="button" onClick={onClose}>Отмена</button>
-              <button type="submit">Сохранить</button>
+              <button type="button" className="btn btn--secondary" onClick={onClose} disabled={saving}>Отмена</button>
+              <button type="submit" className="btn btn--primary" disabled={saving}>
+                {saving ? 'Сохранение…' : 'Сохранить'}
+              </button>
             </div>
           </form>
         )}
@@ -447,8 +480,8 @@ const UserFormModal = ({ user, roles, onSubmit, onClose, error }) => {
           </select>
           {error && <p className="modal__error">{error}</p>}
           <div className="modal__actions">
-            <button type="button" onClick={onClose}>Отмена</button>
-            <button type="submit">Сохранить</button>
+            <button type="button" className="btn btn--secondary" onClick={onClose}>Отмена</button>
+            <button type="submit" className="btn btn--primary">Сохранить</button>
           </div>
         </form>
       </div>
@@ -456,60 +489,25 @@ const UserFormModal = ({ user, roles, onSubmit, onClose, error }) => {
   );
 };
 
-const RoleFormModal = ({ role, accessKeys, onSubmit, onClose, error }) => {
+const RoleFormModal = ({ role, onSubmit, onClose, error }) => {
   const [name, setName] = useState(role?.name ?? '');
-  const [description, setDescription] = useState(role?.description ?? '');
-  const [selected, setSelected] = useState(() => {
-    if (role?.accesses?.length) {
-      return new Set(role.accesses.map((a) => a.access_key || a));
-    }
-    return new Set();
-  });
-
-  const toggle = (key) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>{role ? 'Редактировать роль' : 'Создать роль'}</h3>
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            onSubmit({
-              name,
-              description,
-              access_keys: Array.from(selected),
-            });
+            onSubmit({ name });
           }}
         >
           <label>Название</label>
           <input value={name} onChange={(e) => setName(e.target.value)} required />
-          <label>Описание</label>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
-          <label>Доступы</label>
-          <div className="access-keys">
-            {accessKeys.map((key) => (
-              <label key={key} className="access-keys__item">
-                <input
-                  type="checkbox"
-                  checked={selected.has(key)}
-                  onChange={() => toggle(key)}
-                />
-                {key}
-              </label>
-            ))}
-          </div>
           {error && <p className="modal__error">{error}</p>}
           <div className="modal__actions">
-            <button type="button" onClick={onClose}>Отмена</button>
-            <button type="submit">Сохранить</button>
+            <button type="button" className="btn btn--secondary" onClick={onClose}>Отмена</button>
+            <button type="submit" className="btn btn--primary">Сохранить</button>
           </div>
         </form>
       </div>
