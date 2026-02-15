@@ -60,6 +60,21 @@ const ChemistryPage = () => {
       })
     : balances;
 
+  const chemistryApiError = (err) => {
+    if (err.response?.status === 404) {
+      return 'Сервис «Хим. элементы» пока не подключён. Добавьте на сервере эндпоинты: /api/chemistry/elements/, /api/chemistry/tasks/, /api/chemistry/balances/';
+    }
+    const data = err.response?.data;
+    if (data && typeof data === 'object' && !data.error) {
+      const parts = Object.entries(data).map(([k, v]) => {
+        const msg = Array.isArray(v) ? v.map((e) => (e && typeof e === 'object' ? e.string : e)).join(', ') : String(v);
+        return `${k}: ${msg}`;
+      });
+      return parts.join('; ');
+    }
+    return data?.error || 'Ошибка';
+  };
+
   const handleDirSubmit = async (data) => {
     setSubmitError('');
     try {
@@ -71,7 +86,7 @@ const ChemistryPage = () => {
       setDirModal(null);
       refetchDir();
     } catch (err) {
-      setSubmitError(err.response?.data?.error || 'Ошибка');
+      setSubmitError(chemistryApiError(err));
     }
   };
 
@@ -82,7 +97,7 @@ const ChemistryPage = () => {
       setPlanModal(false);
       refetchPlan();
     } catch (err) {
-      setSubmitError(err.response?.data?.error || 'Ошибка');
+      setSubmitError(chemistryApiError(err));
     }
   };
 
@@ -92,7 +107,7 @@ const ChemistryPage = () => {
       await confirmChemistryTask(id);
       refetchPlan();
     } catch (err) {
-      setSubmitError(err.response?.data?.error || 'Ошибка');
+      setSubmitError(chemistryApiError(err));
     }
   };
 
@@ -104,7 +119,7 @@ const ChemistryPage = () => {
       setDeleteTarget(null);
       refetchDir();
     } catch (err) {
-      setSubmitError(err.response?.data?.error || 'Ошибка удаления');
+      setSubmitError(chemistryApiError(err) || 'Ошибка удаления');
     }
   };
 
@@ -116,7 +131,7 @@ const ChemistryPage = () => {
       setDeleteTarget(null);
       refetchPlan();
     } catch (err) {
-      setSubmitError(err.response?.data?.error || 'Ошибка удаления');
+      setSubmitError(chemistryApiError(err) || 'Ошибка удаления');
     }
   };
 
@@ -372,15 +387,17 @@ const PlanModal = ({ elements, onSubmit, onClose, error }) => {
   const [components, setComponents] = useState([]);
   const [selectedElement, setSelectedElement] = useState('');
   const [quantity, setQuantity] = useState('');
-  const [unit, setUnit] = useState('кг');
+
+  const selectedEl = elements.find((e) => e.id === Number(selectedElement));
+  const displayUnit = selectedEl?.unit || 'кг';
 
   const addRow = () => {
     const id = Number(selectedElement);
     if (!id || !quantity) return;
     const el = elements.find((e) => e.id === id);
-    setComponents((prev) => [...prev, { element_id: id, element_name: el?.name, quantity: Number(quantity), unit }]);
+    const unitFromElement = el?.unit || 'кг';
+    setComponents((prev) => [...prev, { element_id: id, element_name: el?.name, quantity: Number(quantity), unit: unitFromElement }]);
     setQuantity('');
-    setUnit('кг');
   };
 
   const removeRow = (index) => {
@@ -398,9 +415,9 @@ const PlanModal = ({ elements, onSubmit, onClose, error }) => {
           onSubmit={(e) => {
             e.preventDefault();
             onSubmit({
-              title,
+              name: title,
               deadline,
-              components: components.map((c) => ({ element_id: c.element_id, quantity: c.quantity, unit: c.unit })),
+              components: components.map((c) => ({ chemistry: c.element_id, quantity: c.quantity, unit: c.unit })),
             });
           }}
         >
@@ -411,7 +428,7 @@ const PlanModal = ({ elements, onSubmit, onClose, error }) => {
             <select value={selectedElement} onChange={(e) => setSelectedElement(e.target.value)}>
               <option value="">— Выберите —</option>
               {elements.map((el) => (
-                <option key={el.id} value={el.id}>{el.name}</option>
+                <option key={el.id} value={el.id}>{el.name} ({el.unit || 'кг'})</option>
               ))}
             </select>
             <input
@@ -423,11 +440,7 @@ const PlanModal = ({ elements, onSubmit, onClose, error }) => {
               onChange={(e) => setQuantity(e.target.value)}
               className="plan-modal__qty"
             />
-            <select value={unit} onChange={(e) => setUnit(e.target.value)}>
-              {UNITS.map((u) => (
-                <option key={u.value} value={u.value}>{u.label}</option>
-              ))}
-            </select>
+            <span className="plan-modal__unit">{displayUnit}</span>
             <button type="button" className="btn btn--secondary" onClick={addRow}>Добавить</button>
           </div>
           {components.length > 0 && (

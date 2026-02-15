@@ -322,6 +322,15 @@
   .plan-modal__qty {
     width: 90px;
   }
+
+  &__unit {
+    padding: 0.5rem 0.75rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    color: var(--muted);
+    min-width: 48px;
+  }
 }
 
 .plan-modal__table {
