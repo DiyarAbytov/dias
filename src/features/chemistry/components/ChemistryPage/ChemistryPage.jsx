@@ -93,7 +93,15 @@ const ChemistryPage = () => {
   const handlePlanSubmit = async (data) => {
     setSubmitError('');
     try {
-      await createChemistryTask(data);
+      for (const c of data.components) {
+        await createChemistryTask({
+          name: data.name,
+          chemistry: c.element_id,
+          quantity: c.quantity,
+          deadline: data.deadline,
+          unit: c.unit || undefined,
+        });
+      }
       setPlanModal(false);
       refetchPlan();
     } catch (err) {
@@ -125,6 +133,10 @@ const ChemistryPage = () => {
 
   const handleDeleteTask = async () => {
     if (!deleteTarget) return;
+    if (deleteTarget.type === 'planGroup' && deleteTarget.group) {
+      await handleDeleteGroup(deleteTarget.group);
+      return;
+    }
     setSubmitError('');
     try {
       await deleteChemistryTask(deleteTarget.id);
@@ -142,10 +154,57 @@ const ChemistryPage = () => {
     if (Array.isArray(comp) && comp.length) {
       return comp.map((c) => `${c.element_name || c.name || '—'} — ${c.quantity} ${c.unit || 'кг'}`).join(', ');
     }
-    return task.elements_display || '—';
+    const name = task.chemistry_name || task.chemistry_name_ || (task.chemistry && typeof task.chemistry === 'object' ? task.chemistry.name : null);
+    if (name != null) return `${name} — ${task.quantity} ${task.unit || 'кг'}`;
+    return task.elements_display || (task.quantity != null ? `ID ${task.chemistry} — ${task.quantity} ${task.unit || 'кг'}` : '—');
   };
 
   const taskStatus = (task) => task.status === 'completed' || task.status === 'ВЫПОЛНЕНО' ? 'completed' : 'pending';
+
+  const groupTasksByPlan = (list) => {
+    const groups = {};
+    list.forEach((t) => {
+      const key = `${t.name || t.title || ''}|${formatDate(t.deadline || t.term)}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(t);
+    });
+    return Object.values(groups).map((grp) => ({
+      name: grp[0].name || grp[0].title,
+      deadline: grp[0].deadline || grp[0].term,
+      tasks: grp,
+      status: grp.some((t) => taskStatus(t) === 'pending') ? 'pending' : 'completed',
+      elementsText: grp.map((t) => renderTaskElements(t)).join(', '),
+    }));
+  };
+
+  const planGroups = groupTasksByPlan(tasks);
+
+  const handleConfirmGroup = async (group) => {
+    const pending = group.tasks.filter((t) => taskStatus(t) === 'pending');
+    if (pending.length === 0) return;
+    setSubmitError('');
+    try {
+      for (const t of pending) {
+        await confirmChemistryTask(t.id);
+      }
+      refetchPlan();
+    } catch (err) {
+      setSubmitError(chemistryApiError(err));
+    }
+  };
+
+  const handleDeleteGroup = async (group) => {
+    setSubmitError('');
+    try {
+      for (const t of group.tasks) {
+        await deleteChemistryTask(t.id);
+      }
+      setDeleteTarget(null);
+      refetchPlan();
+    } catch (err) {
+      setSubmitError(chemistryApiError(err) || 'Ошибка удаления');
+    }
+  };
 
   return (
     <div className="page page--chemistry">
@@ -189,7 +248,7 @@ const ChemistryPage = () => {
             {planLoading && <Loading />}
             {planError && planError.status !== 404 && <ErrorState error={planError} onRetry={refetchPlan} />}
             {!planLoading && (!planError || planError.status === 404) && (
-              tasks.length === 0 ? (
+              planGroups.length === 0 ? (
                 <EmptyState title="Нет данных" />
               ) : (
                 <div className="chemistry-table chemistry-table--plan">
@@ -200,23 +259,23 @@ const ChemistryPage = () => {
                     <span className="chemistry-table__th">СТАТУС</span>
                     <span className="chemistry-table__th chemistry-table__th--actions">ДЕЙСТВИЯ</span>
                   </div>
-                  {tasks.map((t) => (
-                    <div key={t.id} className="chemistry-table__row">
-                      <span className="chemistry-table__name">{t.title || t.name || '—'}</span>
-                      <span className="chemistry-table__elements">{renderTaskElements(t)}</span>
-                      <span className="chemistry-table__date">{formatDate(t.deadline || t.term)}</span>
+                  {planGroups.map((grp, idx) => (
+                    <div key={`${grp.name}-${grp.deadline}-${idx}`} className="chemistry-table__row">
+                      <span className="chemistry-table__name">{grp.name || '—'}</span>
+                      <span className="chemistry-table__elements">{grp.elementsText || '—'}</span>
+                      <span className="chemistry-table__date">{formatDate(grp.deadline)}</span>
                       <span>
-                        <span className={`chemistry-table__badge chemistry-table__badge--${taskStatus(t)}`}>
-                          {taskStatus(t) === 'completed' ? 'ВЫПОЛНЕНО' : 'В РАБОТЕ'}
+                        <span className={`chemistry-table__badge chemistry-table__badge--${grp.status}`}>
+                          {grp.status === 'completed' ? 'ВЫПОЛНЕНО' : 'В РАБОТЕ'}
                         </span>
                       </span>
                       <div className="chemistry-table__actions">
-                        {taskStatus(t) !== 'completed' && (
-                          <button type="button" className="btn btn--success btn--sm" onClick={() => handleConfirmTask(t.id)}>
+                        {grp.status !== 'completed' && (
+                          <button type="button" className="btn btn--success btn--sm" onClick={() => handleConfirmGroup(grp)}>
                             Подтвердить
                           </button>
                         )}
-                        <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ id: t.id, name: t.title || t.name })}>
+                        <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ type: 'planGroup', group: grp, name: grp.name })}>
                           Удалить
                         </button>
                       </div>
@@ -417,7 +476,7 @@ const PlanModal = ({ elements, onSubmit, onClose, error }) => {
             onSubmit({
               name: title,
               deadline,
-              components: components.map((c) => ({ chemistry: c.element_id, quantity: c.quantity, unit: c.unit })),
+              components: components.map((c) => ({ element_id: c.element_id, quantity: c.quantity, unit: c.unit })),
             });
           }}
         >
