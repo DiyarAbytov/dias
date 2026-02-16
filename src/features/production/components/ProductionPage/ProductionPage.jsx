@@ -1,20 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useServerQuery } from '../../../../shared/lib';
 import { Loading, EmptyState, ErrorState } from '../../../../shared/ui';
-import { releaseOrder } from '../../api/productionApi';
-import { apiClient } from '../../../../shared/api';
+import { getBatches, getOrdersInProgress, releaseOrder } from '../../api/productionApi';
 import './ProductionPage.scss';
+
+const batchListFromRes = (res) => res?.data?.items ?? res?.data?.results ?? [];
+const errorToMessage = (err) => {
+  const data = err?.response?.data;
+  if (!data || typeof data !== 'object') return err?.message || 'Ошибка';
+  const code = data.code ? `[${data.code}] ` : '';
+  const base = data.error || data.message || 'Ошибка';
+  const details = data.details && typeof data.details === 'object'
+    ? Object.entries(data.details).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('; ')
+    : '';
+  const missing = Array.isArray(data.missing) && data.missing.length
+    ? data.missing.map((m) => {
+      if (typeof m === 'object') {
+        const name = m.component || m.raw_material || m.element || m.name || 'компонент';
+        const req = m.required ?? m.need ?? '?';
+        const avail = m.available ?? m.balance ?? 0;
+        const unit = m.unit || '';
+        return `${name}: нужно ${req} ${unit}, доступно ${avail} ${unit}`.trim();
+      }
+      return String(m);
+    }).join('; ')
+    : '';
+  return [code + base, details, missing].filter(Boolean).join('. ');
+};
 
 const ProductionPage = () => {
   const [releaseModalOpen, setReleaseModalOpen] = useState(false);
   const [submitError, setSubmitError] = useState('');
-
-  const { items: orders, loading: ordersLoading, error: ordersError, refetch: refetchOrders } = useServerQuery(
-    'orders/',
-    { page_size: 50 },
-    { enabled: true }
-  );
+  const [orders, setOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [ordersError, setOrdersError] = useState(null);
 
   const releasableOrders = orders.filter((o) => {
     const s = String(o.status || '').toLowerCase();
@@ -25,11 +44,27 @@ const ProductionPage = () => {
   const [batchesLoading, setBatchesLoading] = useState(true);
 
   useEffect(() => {
-    setBatchesLoading(true);
-    apiClient.get('batches/', { params: { page_size: 50 } })
-      .then((res) => setBatches(res.data?.items || []))
-      .catch(() => setBatches([]))
-      .finally(() => setBatchesLoading(false));
+    const loadInitial = async () => {
+      setOrdersLoading(true);
+      setOrdersError(null);
+      setBatchesLoading(true);
+      try {
+        const [ordersRes, batchesRes] = await Promise.all([
+          getOrdersInProgress({ page_size: 50 }),
+          getBatches({ page_size: 50 }),
+        ]);
+        setOrders(batchListFromRes(ordersRes));
+        setBatches(batchListFromRes(batchesRes));
+      } catch (err) {
+        if (err?.response?.status !== 404) setOrdersError(err?.response?.data || { error: err?.message });
+        setOrders([]);
+        setBatches([]);
+      } finally {
+        setOrdersLoading(false);
+        setBatchesLoading(false);
+      }
+    };
+    loadInitial();
   }, []);
 
   const productName = (o) => o.product_name || o.product?.name || o.product || o.recipe?.name || o.recipe_name || '—';
@@ -41,13 +76,36 @@ const ProductionPage = () => {
     if (v === 'done' || v === 'выполнен') return 'ВЫПОЛНЕН';
     return s || '—';
   };
+  const otkStatusLabel = (s) => {
+    const v = String(s || '').toLowerCase();
+    if (v === 'pending' || v === 'ожидает') return 'ОЖИДАЕТ';
+    if (v === 'accepted' || v === 'принято') return 'ПРИНЯТО';
+    if (v === 'rejected' || v === 'брак') return 'БРАК';
+    return s || '—';
+  };
   const formatDate = (d) => (d ? (typeof d === 'string' ? d.slice(0, 10) : d) : '—');
 
   const refetch = () => {
-    refetchOrders();
-    apiClient.get('batches/', { params: { page_size: 50 } })
-      .then((res) => setBatches(res.data?.items || []))
-      .catch(() => setBatches([]));
+    setOrdersLoading(true);
+    setOrdersError(null);
+    setBatchesLoading(true);
+    Promise.all([
+      getOrdersInProgress({ page_size: 50 }),
+      getBatches({ page_size: 50 }),
+    ])
+      .then(([ordersRes, batchesRes]) => {
+        setOrders(batchListFromRes(ordersRes));
+        setBatches(batchListFromRes(batchesRes));
+      })
+      .catch((err) => {
+        if (err?.response?.status !== 404) setOrdersError(err?.response?.data || { error: err?.message });
+        setOrders([]);
+        setBatches([]);
+      })
+      .finally(() => {
+        setOrdersLoading(false);
+        setBatchesLoading(false);
+      });
   };
 
   return (
@@ -70,7 +128,7 @@ const ProductionPage = () => {
           </button>
         </div>
         {ordersLoading && <Loading />}
-        {ordersError && ordersError.status !== 404 && <ErrorState error={ordersError} onRetry={refetchOrders} />}
+        {ordersError && ordersError.status !== 404 && <ErrorState error={ordersError} onRetry={refetch} />}
         {!ordersLoading && (!ordersError || ordersError.status === 404) && (
           releasableOrders.length === 0 ? (
             <EmptyState title="Нет заказов для выпуска" />
@@ -119,7 +177,7 @@ const ProductionPage = () => {
               </div>
               {batches.map((b) => (
                 <div key={b.id} className="production-table__row">
-                  <span>{b.otk_status || b.status || '—'}</span>
+                  <span>{otkStatusLabel(b.otk_status || b.status)}</span>
                   <span>{b.product_name || b.product?.name || b.product || '—'}</span>
                   <span>{b.quantity ?? b.released ?? '—'}</span>
                   <span>{b.operator_name || b.operator?.name || b.operator || b.assigned_to || '—'}</span>
@@ -141,7 +199,7 @@ const ProductionPage = () => {
               setReleaseModalOpen(false);
               refetch();
             } catch (err) {
-              setSubmitError(err.response?.data?.error || err.response?.data?.details || 'Ошибка');
+              setSubmitError(errorToMessage(err));
             }
           }}
           onClose={() => { setReleaseModalOpen(false); setSubmitError(''); }}

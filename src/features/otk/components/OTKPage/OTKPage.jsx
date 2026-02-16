@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../../../features/auth';
 import { Loading, EmptyState, ErrorState } from '../../../../shared/ui';
@@ -13,19 +13,41 @@ const OTK_STATUSES = [
   { label: 'БРАК', color: 'red' },
 ];
 
-const formatDate = (d) => (d ? (typeof d === 'string' ? d.slice(0, 10) : d) : '—');
 const formatDateTime = (d) => {
   if (!d) return '—';
   const s = typeof d === 'string' ? d : String(d);
   if (s.length >= 19) return `${s.slice(8, 10)}.${s.slice(5, 7)}.${s.slice(0, 4)} ${s.slice(11, 19)}`;
   return s.slice(0, 10);
 };
-const orderName = (b) => b.order_name || b.product_name || b.product?.name || b.product || b.recipe?.name || '—';
+const orderName = (b) => b.order_name || b.order_product || b.product_name || b.product?.name || b.product || b.recipe?.name || '—';
+const errorToMessage = (err) => {
+  const data = err?.response?.data;
+  if (!data || typeof data !== 'object') return err?.message || 'Ошибка';
+  const code = data.code ? `[${data.code}] ` : '';
+  const base = data.error || data.message || 'Ошибка';
+  const details = data.details && typeof data.details === 'object'
+    ? Object.entries(data.details).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('; ')
+    : (typeof data.details === 'string' ? data.details : '');
+  const missing = Array.isArray(data.missing) && data.missing.length
+    ? data.missing.map((m) => {
+      if (typeof m === 'object') {
+        const name = m.component || m.raw_material || m.element || m.name || 'компонент';
+        const req = m.required ?? m.need ?? '?';
+        const avail = m.available ?? m.balance ?? 0;
+        const unit = m.unit || '';
+        return `${name}: нужно ${req} ${unit}, доступно ${avail} ${unit}`.trim();
+      }
+      return String(m);
+    }).join('; ')
+    : '';
+  return [code + base, details, missing].filter(Boolean).join('. ');
+};
+
 const statusOtk = (b) => {
   const s = String(b.otk_status ?? b.status ?? '').toLowerCase();
   const defectQty = Number(b.otk_defect) || 0;
   if (s === 'accepted' || s === 'принято') return { label: defectQty > 0 ? 'Принято с браком' : 'Принято', color: 'green' };
-  if (s === 'defect' || s === 'брак') return { label: 'БРАК', color: 'red' };
+  if (s === 'defect' || s === 'rejected' || s === 'брак') return { label: 'БРАК', color: 'red' };
   return { label: 'ОЖИДАЕТ', color: 'orange' };
 };
 
@@ -41,36 +63,36 @@ const OTKPage = () => {
   const [acceptModalBatch, setAcceptModalBatch] = useState(null);
   const [submitError, setSubmitError] = useState('');
 
-  const loadAwaiting = useCallback(() => {
+  const loadAwaiting = () => {
     setLoadingAwaiting(true);
     setErrorAwaiting(null);
     getBatchesAwaitingOtk()
       .then((res) => setAwaitingList(res.items ?? []))
       .catch((err) => setErrorAwaiting(err.response?.data || { error: err.message }))
       .finally(() => setLoadingAwaiting(false));
-  }, []);
+  };
 
-  const loadHistory = useCallback(() => {
+  const loadHistory = () => {
     setLoadingHistory(true);
     setErrorHistory(null);
     getOtkHistory()
       .then((res) => setHistoryList(res.items ?? []))
       .catch((err) => setErrorHistory(err.response?.data || { error: err.message }))
       .finally(() => setLoadingHistory(false));
+  };
+
+  useEffect(() => {
+    loadAwaiting();
   }, []);
 
   useEffect(() => {
-    loadAwaiting();
-  }, [loadAwaiting]);
-
-  useEffect(() => {
     if (activeTab === 'history') loadHistory();
-  }, [activeTab, loadHistory]);
+  }, [activeTab]);
 
-  const refetchAll = useCallback(() => {
+  const refetchAll = () => {
     loadAwaiting();
     loadHistory();
-  }, [loadAwaiting, loadHistory]);
+  };
 
   const handleAcceptSubmit = async (data) => {
     if (!acceptModalBatch?.id) return;
@@ -83,7 +105,7 @@ const OTKPage = () => {
       setAcceptModalBatch(null);
       refetchAll();
     } catch (err) {
-      setSubmitError(err.response?.data?.error || err.response?.data?.details || 'Ошибка');
+      setSubmitError(errorToMessage(err));
     }
   };
 
@@ -214,6 +236,7 @@ const OTKPage = () => {
 
       {acceptModalBatch && (
         <AcceptModal
+          key={acceptModalBatch.id}
           batch={acceptModalBatch}
           onSubmit={handleAcceptSubmit}
           onClose={() => { setAcceptModalBatch(null); setSubmitError(''); }}
@@ -231,15 +254,12 @@ const AcceptModal = ({ batch, onSubmit, onClose, error }) => {
   const [defectReason, setDefectReason] = useState('');
   const [comment, setComment] = useState('');
 
-  useEffect(() => {
-    if (batch && produced > 0 && accepted === '') setAccepted(String(produced));
-  }, [batch?.id, produced]);
-
   const handleSubmit = (e) => {
     e.preventDefault();
     const a = Number(accepted) || 0;
     const d = Number(defect) || 0;
     if (a + d <= 0) return;
+    if (produced > 0 && a + d !== produced) return;
     if (d > 0 && !defectReason.trim()) return;
     onSubmit({
       accepted: a,
@@ -251,6 +271,8 @@ const AcceptModal = ({ batch, onSubmit, onClose, error }) => {
 
   const defectQty = Number(defect) || 0;
   const defectReasonRequired = defectQty > 0;
+  const acceptedQty = Number(accepted) || 0;
+  const invalidTotal = produced > 0 && acceptedQty + defectQty !== produced;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -308,9 +330,14 @@ const AcceptModal = ({ batch, onSubmit, onClose, error }) => {
             rows={2}
           />
           {error && <p className="modal__error">{error}</p>}
+          {invalidTotal && (
+            <p className="modal__error">
+              Сумма «Принято + Брак» должна быть равна выпущенному количеству ({produced} шт).
+            </p>
+          )}
           <div className="modal__actions">
             <button type="button" className="btn btn--secondary" onClick={onClose}>Отмена</button>
-            <button type="submit" className="btn btn--primary">Сохранить результат</button>
+            <button type="submit" className="btn btn--primary" disabled={invalidTotal}>Сохранить результат</button>
           </div>
         </form>
       </div>
