@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useServerQuery } from '../../../../shared/lib';
 import { Loading, EmptyState, ErrorState } from '../../../../shared/ui';
-import { getOrdersInProgress, getBatches, releaseOrder } from '../../api/productionApi';
+import { releaseOrder } from '../../api/productionApi';
 import { apiClient } from '../../../../shared/api';
 import './ProductionPage.scss';
 
@@ -12,9 +12,14 @@ const ProductionPage = () => {
 
   const { items: orders, loading: ordersLoading, error: ordersError, refetch: refetchOrders } = useServerQuery(
     'orders/',
-    { status: 'in_progress', page_size: 50 },
+    { page_size: 50 },
     { enabled: true }
   );
+
+  const releasableOrders = orders.filter((o) => {
+    const s = String(o.status || '').toLowerCase();
+    return s === 'created' || s === 'in_progress' || s === 'создан' || s === 'в работе';
+  });
 
   const [batches, setBatches] = useState([]);
   const [batchesLoading, setBatchesLoading] = useState(true);
@@ -29,6 +34,13 @@ const ProductionPage = () => {
 
   const productName = (o) => o.product_name || o.product?.name || o.product || o.recipe?.name || o.recipe_name || '—';
   const lineName = (o) => o.line?.name || o.line_name || o.line || '—';
+  const statusLabel = (s) => {
+    const v = String(s || '').toLowerCase();
+    if (v === 'created' || v === 'создан') return 'СОЗДАН';
+    if (v === 'in_progress' || v === 'в работе') return 'В РАБОТЕ';
+    if (v === 'done' || v === 'выполнен') return 'ВЫПОЛНЕН';
+    return s || '—';
+  };
   const formatDate = (d) => (d ? (typeof d === 'string' ? d.slice(0, 10) : d) : '—');
 
   const refetch = () => {
@@ -60,7 +72,7 @@ const ProductionPage = () => {
         {ordersLoading && <Loading />}
         {ordersError && ordersError.status !== 404 && <ErrorState error={ordersError} onRetry={refetchOrders} />}
         {!ordersLoading && (!ordersError || ordersError.status === 404) && (
-          orders.length === 0 ? (
+          releasableOrders.length === 0 ? (
             <EmptyState title="Нет заказов для выпуска" />
           ) : (
             <div className="production-table production-table--orders">
@@ -71,12 +83,12 @@ const ProductionPage = () => {
                 <span className="production-table__th">СТАТУС</span>
                 <span className="production-table__th production-table__th--actions">ДЕЙСТВИЯ</span>
               </div>
-              {orders.map((o) => (
+              {releasableOrders.map((o) => (
                 <div key={o.id} className="production-table__row">
                   <span>{productName(o)}</span>
                   <span>{lineName(o)}</span>
                   <span>{o.quantity ?? o.released ?? o.produced ?? '—'}</span>
-                  <span>{productName(o)}</span>
+                  <span>{statusLabel(o.status)}</span>
                   <div className="production-table__actions">
                     <button type="button" className="btn btn--secondary btn--sm">Редактировать</button>
                     <button type="button" className="btn btn--danger btn--sm">Удалить</button>
@@ -121,7 +133,7 @@ const ProductionPage = () => {
 
       {releaseModalOpen && (
         <ReleaseModal
-          orders={orders}
+          orders={releasableOrders}
           onSubmit={async (data) => {
             setSubmitError('');
             try {
