@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../../../features/auth';
-import { Loading, EmptyState, ErrorState } from '../../../../shared/ui';
+import { Loading, EmptyState, ErrorState, FilterBar } from '../../../../shared/ui';
+import { useServerQuery } from '../../../../shared/lib';
 import { getBatchesAwaitingOtk, getOtkHistory, acceptBatch } from '../../api';
 import './OTKPage.scss';
 
@@ -51,47 +52,78 @@ const statusOtk = (b) => {
   return { label: 'ОЖИДАЕТ', color: 'orange' };
 };
 
+const updateQuery = (setter) => (patch) => {
+  setter((prev) => ({
+    ...prev,
+    ...patch,
+    page: patch.page !== undefined ? patch.page : 1,
+  }));
+};
+
+const Pagination = ({ meta, onChange }) => {
+  const page = Number(meta?.page || 1);
+  const totalPages = Number(meta?.total_pages || 1);
+  if (totalPages <= 1) return null;
+  return (
+    <div className="otk-pagination">
+      <button type="button" className="btn btn--secondary btn--sm" onClick={() => onChange({ page: page - 1 })} disabled={page <= 1}>
+        Назад
+      </button>
+      <span>Страница {page} из {totalPages}</span>
+      <button type="button" className="btn btn--secondary btn--sm" onClick={() => onChange({ page: page + 1 })} disabled={page >= totalPages}>
+        Вперёд
+      </button>
+    </div>
+  );
+};
+
 const OTKPage = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('awaiting');
-  const [awaitingList, setAwaitingList] = useState([]);
-  const [historyList, setHistoryList] = useState([]);
-  const [loadingAwaiting, setLoadingAwaiting] = useState(true);
-  const [loadingHistory, setLoadingHistory] = useState(true);
-  const [errorAwaiting, setErrorAwaiting] = useState(null);
-  const [errorHistory, setErrorHistory] = useState(null);
   const [acceptModalBatch, setAcceptModalBatch] = useState(null);
   const [submitError, setSubmitError] = useState('');
+  const [awaitingQuery, setAwaitingQuery] = useState({
+    page: 1,
+    page_size: 20,
+    search: '',
+    ordering: '',
+  });
+  const [historyQuery, setHistoryQuery] = useState({
+    page: 1,
+    page_size: 20,
+    search: '',
+    ordering: '-date',
+    otk_status: '',
+  });
 
-  const loadAwaiting = () => {
-    setLoadingAwaiting(true);
-    setErrorAwaiting(null);
-    getBatchesAwaitingOtk()
-      .then((res) => setAwaitingList(res.items ?? []))
-      .catch((err) => setErrorAwaiting(err.response?.data || { error: err.message }))
-      .finally(() => setLoadingAwaiting(false));
-  };
+  const onAwaitingQueryChange = updateQuery(setAwaitingQuery);
+  const onHistoryQueryChange = updateQuery(setHistoryQuery);
 
-  const loadHistory = () => {
-    setLoadingHistory(true);
-    setErrorHistory(null);
-    getOtkHistory()
-      .then((res) => setHistoryList(res.items ?? []))
-      .catch((err) => setErrorHistory(err.response?.data || { error: err.message }))
-      .finally(() => setLoadingHistory(false));
-  };
+  const {
+    items: awaitingList,
+    meta: awaitingMeta,
+    loading: loadingAwaiting,
+    error: errorAwaiting,
+    refetch: refetchAwaiting,
+  } = useServerQuery(null, awaitingQuery, {
+    enabled: activeTab === 'awaiting',
+    fetcher: (queryState, signal) => getBatchesAwaitingOtk({ query: queryState, signal }),
+  });
 
-  useEffect(() => {
-    loadAwaiting();
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === 'history') loadHistory();
-  }, [activeTab]);
+  const {
+    items: historyList,
+    meta: historyMeta,
+    loading: loadingHistory,
+    error: errorHistory,
+    refetch: refetchHistory,
+  } = useServerQuery(null, historyQuery, {
+    enabled: activeTab === 'history',
+    fetcher: (queryState, signal) => getOtkHistory({ query: queryState, signal }),
+  });
 
   const refetchAll = () => {
-    loadAwaiting();
-    loadHistory();
+    refetchAwaiting();
+    refetchHistory();
   };
 
   const handleAcceptSubmit = async (data) => {
@@ -99,8 +131,11 @@ const OTKPage = () => {
     setSubmitError('');
     try {
       await acceptBatch(acceptModalBatch.id, {
-        ...data,
-        inspector: user?.name || user?.email || null,
+        accepted: data.accepted,
+        rejected: data.rejected,
+        rejectReason: data.rejectReason,
+        comment: data.comment,
+        inspectorId: user?.id || null,
       });
       setAcceptModalBatch(null);
       refetchAll();
@@ -152,8 +187,19 @@ const OTKPage = () => {
         <div className="otk-card">
           <h2 className="otk-card__title">Контроль качества — ожидает проверки</h2>
           <p className="otk-card__subtitle">Партии, требующие проверки ОТК</p>
+          <FilterBar
+            filters={[
+              { key: 'search', type: 'search', placeholder: 'Поиск' },
+              { key: 'ordering', type: 'ordering', placeholder: 'Сортировка', options: [
+                { value: 'date', label: 'Дата (возр.)' },
+                { value: '-date', label: 'Дата (убыв.)' },
+              ] },
+            ]}
+            queryState={awaitingQuery}
+            onChange={onAwaitingQueryChange}
+          />
           {loadingAwaiting && <Loading />}
-          {errorAwaiting && <ErrorState error={errorAwaiting} onRetry={loadAwaiting} />}
+          {errorAwaiting && <ErrorState error={errorAwaiting} onRetry={refetchAwaiting} />}
           {!loadingAwaiting && !errorAwaiting && awaitingList.length === 0 && (
             <EmptyState title="Нет партий, ожидающих проверки" />
           )}
@@ -188,6 +234,7 @@ const OTKPage = () => {
               })}
             </div>
           )}
+          {!loadingAwaiting && !errorAwaiting && <Pagination meta={awaitingMeta} onChange={onAwaitingQueryChange} />}
         </div>
       )}
 
@@ -195,8 +242,23 @@ const OTKPage = () => {
         <div className="otk-card">
           <h2 className="otk-card__title">История контроля качества</h2>
           <p className="otk-card__subtitle">Проверенные партии</p>
+          <FilterBar
+            filters={[
+              { key: 'search', type: 'search', placeholder: 'Поиск' },
+              { key: 'otk_status', type: 'select', placeholder: 'Статус', options: [
+                { value: 'accepted', label: 'Принято' },
+                { value: 'rejected', label: 'Брак' },
+              ] },
+              { key: 'ordering', type: 'ordering', placeholder: 'Сортировка', options: [
+                { value: 'otk_checked_at', label: 'Проверка (возр.)' },
+                { value: '-otk_checked_at', label: 'Проверка (убыв.)' },
+              ] },
+            ]}
+            queryState={historyQuery}
+            onChange={onHistoryQueryChange}
+          />
           {loadingHistory && <Loading />}
-          {errorHistory && <ErrorState error={errorHistory} onRetry={loadHistory} />}
+          {errorHistory && <ErrorState error={errorHistory} onRetry={refetchHistory} />}
           {!loadingHistory && !errorHistory && historyList.length === 0 && (
             <EmptyState title="Нет записей в истории" />
           )}
@@ -231,6 +293,7 @@ const OTKPage = () => {
               })}
             </div>
           )}
+          {!loadingHistory && !errorHistory && <Pagination meta={historyMeta} onChange={onHistoryQueryChange} />}
         </div>
       )}
 
@@ -263,8 +326,8 @@ const AcceptModal = ({ batch, onSubmit, onClose, error }) => {
     if (d > 0 && !defectReason.trim()) return;
     onSubmit({
       accepted: a,
-      defect: d,
-      defect_reason: defectReason.trim() || undefined,
+      rejected: d,
+      rejectReason: defectReason.trim() || undefined,
       comment: comment.trim() || undefined,
     });
   };
@@ -273,6 +336,38 @@ const AcceptModal = ({ batch, onSubmit, onClose, error }) => {
   const defectReasonRequired = defectQty > 0;
   const acceptedQty = Number(accepted) || 0;
   const invalidTotal = produced > 0 && acceptedQty + defectQty !== produced;
+
+  const handleAcceptedChange = (value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) {
+      setAccepted(value);
+      return;
+    }
+    if (produced > 0) {
+      const safeAccepted = Math.min(n, produced);
+      setAccepted(String(safeAccepted));
+      const autoDefect = Math.max(produced - safeAccepted, 0);
+      setDefect(String(autoDefect));
+      return;
+    }
+    setAccepted(value);
+  };
+
+  const handleDefectChange = (value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) {
+      setDefect(value);
+      return;
+    }
+    if (produced > 0) {
+      const safeDefect = Math.min(n, produced);
+      setDefect(String(safeDefect));
+      const autoAccepted = Math.max(produced - safeDefect, 0);
+      setAccepted(String(autoAccepted));
+      return;
+    }
+    setDefect(value);
+  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -303,7 +398,7 @@ const AcceptModal = ({ batch, onSubmit, onClose, error }) => {
             min="0"
             step="1"
             value={accepted}
-            onChange={(e) => setAccepted(e.target.value)}
+            onChange={(e) => handleAcceptedChange(e.target.value)}
           />
           <label>Брак (шт)</label>
           <input
@@ -311,7 +406,7 @@ const AcceptModal = ({ batch, onSubmit, onClose, error }) => {
             min="0"
             step="1"
             value={defect}
-            onChange={(e) => setDefect(e.target.value)}
+            onChange={(e) => handleDefectChange(e.target.value)}
           />
           <label>Комментарий</label>
           <textarea

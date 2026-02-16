@@ -6,7 +6,7 @@ import './LoginPage.scss';
 const LoginPage = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -14,13 +14,13 @@ const LoginPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!email || !password) {
-      setError('Укажите email и пароль');
+    if (!name || !password) {
+      setError('Укажите имя и пароль');
       return;
     }
     setLoading(true);
     try {
-      await login(email, password);
+      await login(name, password);
       navigate('/');
     } catch (err) {
       const msg = err.response?.data?.error ?? 'Ошибка входа';
@@ -36,12 +36,12 @@ const LoginPage = () => {
         <h1 className="login-page__title">DIAS</h1>
         <form className="login-page__form" onSubmit={handleSubmit}>
           <input
-            type="email"
+            type="text"
             className="login-page__input"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
+            placeholder="Имя"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoComplete="username"
           />
           <input
             type="password"

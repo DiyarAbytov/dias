@@ -30,8 +30,8 @@ export const AuthProvider = ({ children }) => {
     loadUser();
   }, [loadUser]);
 
-  const login = useCallback(async (email, password) => {
-    const data = await loginApi(email, password);
+  const login = useCallback(async (name, password) => {
+    const data = await loginApi(name, password);
     localStorage.setItem('token', data.token);
     setUser(data.user);
   }, []);

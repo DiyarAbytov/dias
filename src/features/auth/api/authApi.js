@@ -1,7 +1,7 @@
 import { apiClient } from '../../../shared/api';
 
-export const login = async (email, password) => {
-  const res = await apiClient.post('/auth/login', { email, password });
+export const login = async (name, password) => {
+  const res = await apiClient.post('/auth/login', { name, password });
   return res.data;
 };
 

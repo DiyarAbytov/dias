@@ -16,12 +16,13 @@ const buildQueryString = (queryState) => {
 };
 
 export const useServerQuery = (url, queryState, options = {}) => {
-  const { enabled = true } = options;
+  const { enabled = true, fetcher } = options;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const abortRef = useRef(null);
   const requestIdRef = useRef(0);
+  const queryKey = JSON.stringify(queryState || {});
 
   const fetchData = useCallback(async () => {
     if (!url || !enabled) return;
@@ -33,12 +34,19 @@ export const useServerQuery = (url, queryState, options = {}) => {
     setError(null);
 
     try {
-      const qs = buildQueryString(queryState);
-      const res = await apiClient.get(`${url}${qs}`, {
-        signal: abortRef.current.signal,
-      });
+      const stableQueryState = queryKey ? JSON.parse(queryKey) : {};
+      let payload;
+      if (fetcher) {
+        payload = await fetcher(stableQueryState, abortRef.current.signal);
+      } else {
+        const qs = buildQueryString(stableQueryState);
+        const res = await apiClient.get(`${url}${qs}`, {
+          signal: abortRef.current.signal,
+        });
+        payload = res.data;
+      }
       if (id !== requestIdRef.current) return;
-      setData(res.data);
+      setData(payload);
     } catch (err) {
       if (err.name === 'AbortError' || err.code === 'ERR_CANCELED') return;
       if (id !== requestIdRef.current) return;
@@ -49,7 +57,7 @@ export const useServerQuery = (url, queryState, options = {}) => {
     } finally {
       if (id === requestIdRef.current) setLoading(false);
     }
-  }, [url, enabled, JSON.stringify(queryState)]);
+  }, [url, enabled, fetcher, queryKey]);
 
   useEffect(() => {
     fetchData();

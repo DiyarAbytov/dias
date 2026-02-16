@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Loading, EmptyState, ErrorState } from '../../../../shared/ui';
-import { getBatches, getOrdersInProgress, releaseOrder } from '../../api/productionApi';
+import { EmptyState, FilterBar, Loading, ErrorState } from '../../../../shared/ui';
+import { useServerQuery } from '../../../../shared/lib';
+import { getProductionBatches, getProductionOrders, releaseOrder } from '../../api/productionApi';
 import './ProductionPage.scss';
 
-const batchListFromRes = (res) => res?.data?.items ?? res?.data?.results ?? [];
 const errorToMessage = (err) => {
   const data = err?.response?.data;
   if (!data || typeof data !== 'object') return err?.message || 'Ошибка';
@@ -28,44 +28,71 @@ const errorToMessage = (err) => {
   return [code + base, details, missing].filter(Boolean).join('. ');
 };
 
+const updateQuery = (setter) => (patch) => {
+  setter((prev) => ({
+    ...prev,
+    ...patch,
+    page: patch.page !== undefined ? patch.page : 1,
+  }));
+};
+
+const Pagination = ({ meta, onChange }) => {
+  const page = Number(meta?.page || 1);
+  const totalPages = Number(meta?.total_pages || 1);
+  if (totalPages <= 1) return null;
+  return (
+    <div className="production-pagination">
+      <button type="button" className="btn btn--secondary btn--sm" onClick={() => onChange({ page: page - 1 })} disabled={page <= 1}>
+        Назад
+      </button>
+      <span>Страница {page} из {totalPages}</span>
+      <button type="button" className="btn btn--secondary btn--sm" onClick={() => onChange({ page: page + 1 })} disabled={page >= totalPages}>
+        Вперёд
+      </button>
+    </div>
+  );
+};
+
 const ProductionPage = () => {
   const [releaseModalOpen, setReleaseModalOpen] = useState(false);
   const [submitError, setSubmitError] = useState('');
-  const [orders, setOrders] = useState([]);
-  const [ordersLoading, setOrdersLoading] = useState(true);
-  const [ordersError, setOrdersError] = useState(null);
-
-  const releasableOrders = orders.filter((o) => {
-    const s = String(o.status || '').toLowerCase();
-    return s === 'created' || s === 'in_progress' || s === 'создан' || s === 'в работе';
+  const [ordersQuery, setOrdersQuery] = useState({
+    page: 1,
+    page_size: 20,
+    search: '',
+    ordering: '',
+    status: '',
+  });
+  const [batchesQuery, setBatchesQuery] = useState({
+    page: 1,
+    page_size: 20,
+    search: '',
+    ordering: '',
+    otk_status: '',
   });
 
-  const [batches, setBatches] = useState([]);
-  const [batchesLoading, setBatchesLoading] = useState(true);
+  const onOrdersQueryChange = updateQuery(setOrdersQuery);
+  const onBatchesQueryChange = updateQuery(setBatchesQuery);
 
-  useEffect(() => {
-    const loadInitial = async () => {
-      setOrdersLoading(true);
-      setOrdersError(null);
-      setBatchesLoading(true);
-      try {
-        const [ordersRes, batchesRes] = await Promise.all([
-          getOrdersInProgress({ page_size: 50 }),
-          getBatches({ page_size: 50 }),
-        ]);
-        setOrders(batchListFromRes(ordersRes));
-        setBatches(batchListFromRes(batchesRes));
-      } catch (err) {
-        if (err?.response?.status !== 404) setOrdersError(err?.response?.data || { error: err?.message });
-        setOrders([]);
-        setBatches([]);
-      } finally {
-        setOrdersLoading(false);
-        setBatchesLoading(false);
-      }
-    };
-    loadInitial();
-  }, []);
+  const {
+    items: orders,
+    meta: ordersMeta,
+    loading: ordersLoading,
+    error: ordersError,
+    refetch: refetchOrders,
+  } = useServerQuery(null, ordersQuery, {
+    fetcher: (queryState, signal) => getProductionOrders({ query: queryState, signal }),
+  });
+
+  const {
+    items: batches,
+    meta: batchesMeta,
+    loading: batchesLoading,
+    error: batchesError,
+    refetch: refetchBatches,
+  } = useServerQuery(null, batchesQuery, {
+    fetcher: (queryState, signal) => getProductionBatches({ query: queryState, signal }),
+  });
 
   const productName = (o) => o.product_name || o.product?.name || o.product || o.recipe?.name || o.recipe_name || '—';
   const lineName = (o) => o.line?.name || o.line_name || o.line || '—';
@@ -86,26 +113,8 @@ const ProductionPage = () => {
   const formatDate = (d) => (d ? (typeof d === 'string' ? d.slice(0, 10) : d) : '—');
 
   const refetch = () => {
-    setOrdersLoading(true);
-    setOrdersError(null);
-    setBatchesLoading(true);
-    Promise.all([
-      getOrdersInProgress({ page_size: 50 }),
-      getBatches({ page_size: 50 }),
-    ])
-      .then(([ordersRes, batchesRes]) => {
-        setOrders(batchListFromRes(ordersRes));
-        setBatches(batchListFromRes(batchesRes));
-      })
-      .catch((err) => {
-        if (err?.response?.status !== 404) setOrdersError(err?.response?.data || { error: err?.message });
-        setOrders([]);
-        setBatches([]);
-      })
-      .finally(() => {
-        setOrdersLoading(false);
-        setBatchesLoading(false);
-      });
+    refetchOrders();
+    refetchBatches();
   };
 
   return (
@@ -127,10 +136,28 @@ const ProductionPage = () => {
             Выпустить
           </button>
         </div>
+        <FilterBar
+          filters={[
+            { key: 'search', type: 'search', placeholder: 'Поиск' },
+            { key: 'status', type: 'select', placeholder: 'Статус', options: [
+              { value: 'created', label: 'Создан' },
+              { value: 'in_progress', label: 'В работе' },
+              { value: 'done', label: 'Выполнен' },
+            ] },
+            { key: 'ordering', type: 'ordering', placeholder: 'Сортировка', options: [
+              { value: 'date', label: 'Дата (возр.)' },
+              { value: '-date', label: 'Дата (убыв.)' },
+              { value: 'product', label: 'Продукт (А-Я)' },
+              { value: '-product', label: 'Продукт (Я-А)' },
+            ] },
+          ]}
+          queryState={ordersQuery}
+          onChange={onOrdersQueryChange}
+        />
         {ordersLoading && <Loading />}
-        {ordersError && ordersError.status !== 404 && <ErrorState error={ordersError} onRetry={refetch} />}
-        {!ordersLoading && (!ordersError || ordersError.status === 404) && (
-          releasableOrders.length === 0 ? (
+        {ordersError && <ErrorState error={ordersError} onRetry={refetchOrders} />}
+        {!ordersLoading && !ordersError && (
+          orders.length === 0 ? (
             <EmptyState title="Нет заказов для выпуска" />
           ) : (
             <div className="production-table production-table--orders">
@@ -141,7 +168,7 @@ const ProductionPage = () => {
                 <span className="production-table__th">СТАТУС</span>
                 <span className="production-table__th production-table__th--actions">ДЕЙСТВИЯ</span>
               </div>
-              {releasableOrders.map((o) => (
+              {orders.map((o) => (
                 <div key={o.id} className="production-table__row">
                   <span>{productName(o)}</span>
                   <span>{lineName(o)}</span>
@@ -156,14 +183,32 @@ const ProductionPage = () => {
             </div>
           )
         )}
+        {!ordersLoading && !ordersError && <Pagination meta={ordersMeta} onChange={onOrdersQueryChange} />}
       </div>
 
       <div className="production-card">
         <div className="production-card__head">
           <h2 className="production-card__title">Партии</h2>
         </div>
+        <FilterBar
+          filters={[
+            { key: 'search', type: 'search', placeholder: 'Поиск' },
+            { key: 'otk_status', type: 'select', placeholder: 'Статус ОТК', options: [
+              { value: 'pending', label: 'Ожидает' },
+              { value: 'accepted', label: 'Принято' },
+              { value: 'rejected', label: 'Брак' },
+            ] },
+            { key: 'ordering', type: 'ordering', placeholder: 'Сортировка', options: [
+              { value: 'date', label: 'Дата (возр.)' },
+              { value: '-date', label: 'Дата (убыв.)' },
+            ] },
+          ]}
+          queryState={batchesQuery}
+          onChange={onBatchesQueryChange}
+        />
         {batchesLoading && <Loading />}
-        {!batchesLoading && (
+        {batchesError && <ErrorState error={batchesError} onRetry={refetchBatches} />}
+        {!batchesLoading && !batchesError && (
           batches.length === 0 ? (
             <EmptyState title="Нет партий" />
           ) : (
@@ -187,11 +232,12 @@ const ProductionPage = () => {
             </div>
           )
         )}
+        {!batchesLoading && !batchesError && <Pagination meta={batchesMeta} onChange={onBatchesQueryChange} />}
       </div>
 
       {releaseModalOpen && (
         <ReleaseModal
-          orders={releasableOrders}
+          orders={orders}
           onSubmit={async (data) => {
             setSubmitError('');
             try {
@@ -276,7 +322,7 @@ const ReleaseModal = ({ orders, onSubmit, onClose, error }) => {
             <div className="production-writeoff-table">
               <div className="production-writeoff-table__header">
                 <span>КОМПОНЕНТ</span>
-                <span>ТРЕБУЕТС</span>
+                <span>ТРЕБУЕТСЯ</span>
                 <span>КУДА</span>
                 <span>ПАРТИЯ</span>
                 <span>ОСТАТОК</span>

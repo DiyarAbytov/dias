@@ -1,6 +1,5 @@
 import React from 'react';
 import './FilterBar.scss';
-import './FilterBar.scss';
 
 const FilterBar = ({ filters, queryState, onChange }) => (
   <div className="filter-bar">
