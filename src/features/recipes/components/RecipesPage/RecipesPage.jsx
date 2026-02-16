@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useServerQuery } from '../../../../shared/lib';
 import { Loading, EmptyState, ErrorState, ConfirmModal } from '../../../../shared/ui';
-import { createRecipe, updateRecipe, deleteRecipe } from '../../api/recipesApi';
+import { createRecipe, updateRecipe, deleteRecipe, getRecipe } from '../../api/recipesApi';
 import { apiClient } from '../../../../shared/api';
 import './RecipesPage.scss';
 
@@ -17,6 +17,36 @@ const RecipesPage = () => {
     query,
     { enabled: true }
   );
+
+  const [rawMaterials, setRawMaterials] = useState([]);
+  const [chemistryElements, setChemistryElements] = useState([]);
+
+  useEffect(() => {
+    apiClient.get('raw-materials/', { params: { page_size: 500 } })
+      .then((res) => setRawMaterials(res.data?.items || []))
+      .catch(() => setRawMaterials([]));
+  }, []);
+  useEffect(() => {
+    apiClient.get('chemistry/elements/', { params: { page_size: 500 } })
+      .then((res) => setChemistryElements(res.data?.items || []))
+      .catch(() => setChemistryElements([]));
+  }, []);
+
+  const resolveComponentName = (c) => {
+    const name = c.material_name || c.element_name || c.name;
+    if (name) return name;
+    const matId = c.material_id ?? c.raw_material_id;
+    if (matId != null) {
+      const m = rawMaterials.find((i) => String(i.id) === String(matId));
+      return m?.name || '—';
+    }
+    const eId = c.chemistry_id ?? c.element_id;
+    if (eId != null) {
+      const e = chemistryElements.find((i) => String(i.id) === String(eId));
+      return e?.name || '—';
+    }
+    return '—';
+  };
 
   const handleSubmit = async (data) => {
     setSubmitError('');
@@ -49,7 +79,7 @@ const RecipesPage = () => {
     const comp = recipe.components || recipe.composition || [];
     if (Array.isArray(comp) && comp.length) {
       return comp.map((c) => {
-        const name = c.material_name || c.element_name || c.name || '—';
+        const name = resolveComponentName(c);
         const qty = c.quantity != null ? c.quantity : '';
         const u = c.unit || 'кг';
         return qty ? `${name} ${qty} ${u}` : name;
@@ -94,22 +124,18 @@ const RecipesPage = () => {
             <div className="recipes-table">
               <div className="recipes-table__header">
                 <span className="recipes-table__th">РЕЦЕПТ</span>
-                <span className="recipes-table__th">ТОВАР (ПРОДУКТ)</span>
                 <span className="recipes-table__th">СОСТАВ</span>
-                <span className="recipes-table__th">СТАТУС</span>
                 <span className="recipes-table__th recipes-table__th--actions">ДЕЙСТВИЯ</span>
               </div>
               {recipes.map((r) => (
                 <div key={r.id} className="recipes-table__row">
-                  <span className="recipes-table__name">{r.name || r.recipe_name || '—'}</span>
-                  <span>{r.product_name || r.product || r.name || '—'}</span>
+                  <span className="recipes-table__name">{r.name || r.recipe || r.recipe_name || r.product || r.product_name || '—'}</span>
                   <span className="recipes-table__composition">{renderComposition(r)}</span>
-                  <span>{r.status || '—'}</span>
                   <div className="recipes-table__actions">
                     <button type="button" className="btn btn--secondary btn--sm" onClick={() => setModalOpen(r)}>
                       Редактировать
                     </button>
-                    <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ id: r.id, name: r.name || r.recipe_name })}>
+                    <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ id: r.id, name: r.name || r.recipe || r.recipe_name || r.product })}>
                       Удалить
                     </button>
                   </div>
@@ -123,6 +149,7 @@ const RecipesPage = () => {
       {modalOpen !== null && (
         <RecipeModal
           recipe={modalOpen?.id ? modalOpen : null}
+          onFetchRecipe={modalOpen?.id ? getRecipe : undefined}
           onSubmit={handleSubmit}
           onClose={() => { setModalOpen(null); setSubmitError(''); }}
           error={submitError}
@@ -144,23 +171,40 @@ const RecipesPage = () => {
 const TYPE_RAW = 'raw_material';
 const TYPE_CHEMISTRY = 'chemistry';
 
-const RecipeModal = ({ recipe, onSubmit, onClose, error }) => {
+const RecipeModal = ({ recipe, onFetchRecipe, onSubmit, onClose, error }) => {
   const isEdit = !!recipe?.id;
-  const [name, setName] = useState(recipe?.name || recipe?.recipe_name ?? '');
-  const [components, setComponents] = useState(() => {
-    const comp = recipe?.components || recipe?.composition || [];
-    return Array.isArray(comp) ? comp.map((c) => ({
-      type: c.type || (c.material_id ? TYPE_RAW : TYPE_CHEMISTRY),
-      id: c.material_id || c.chemistry_id || c.element_id || c.id,
-      name: c.material_name || c.element_name || c.name || '—',
-      quantity: c.quantity ?? '',
-      unit: c.unit || 'кг',
-    })) : [];
-  });
+  const [name, setName] = useState('');
+  const [components, setComponents] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const init = (r) => {
+      const recipeName = r?.name || r?.recipe || r?.recipe_name || r?.product || r?.product_name || '';
+      setName(recipeName);
+      const comp = r?.components || r?.composition || [];
+      setComponents(Array.isArray(comp) ? comp.map((c) => ({
+        type: c.type || (c.material_id ? TYPE_RAW : TYPE_CHEMISTRY),
+        id: c.material_id || c.chemistry_id || c.element_id || c.id,
+        name: c.material_name || c.element_name || c.name || '—',
+        quantity: c.quantity ?? '',
+        unit: c.unit || 'кг',
+      })) : []);
+    };
+    if (recipe?.id && onFetchRecipe) {
+      setLoading(true);
+      onFetchRecipe(recipe.id)
+        .then((res) => init(res.data))
+        .catch(() => init(recipe))
+        .finally(() => setLoading(false));
+    } else if (recipe && !recipe.id) {
+      init(null);
+    } else {
+      init(recipe);
+    }
+  }, [recipe?.id, onFetchRecipe]);
   const [compType, setCompType] = useState(TYPE_RAW);
   const [selectedId, setSelectedId] = useState('');
   const [quantity, setQuantity] = useState('');
-  const [unit, setUnit] = useState('кг');
 
   const [rawMaterials, setRawMaterials] = useState([]);
   const [chemistryElements, setChemistryElements] = useState([]);
@@ -172,59 +216,61 @@ const RecipeModal = ({ recipe, onSubmit, onClose, error }) => {
   }, []);
 
   useEffect(() => {
-    const loadConfirmed = async () => {
+    const loadElements = async () => {
+      const toItem = (i) => {
+        const u = i.unit ?? i.unit_of_measure;
+        const unit = typeof u === 'string' ? u : (u?.code ?? u?.short ?? u?.name ?? 'кг');
+        return { id: i.id, name: i.name, unit };
+      };
       try {
-        const bal = await apiClient.get('chemistry/balances/');
-        const items = bal.data?.items || [];
-        if (items.length) {
-          setChemistryElements(items.map((b) => ({
-            id: b.chemistry_id ?? b.element_id ?? b.id,
-            name: b.element_name ?? b.chemistry_name ?? b.name ?? '—',
-            unit: b.unit ?? 'кг',
-          })));
-          return;
-        }
-      } catch (_) { /* no balances */ }
-      try {
-        const res = await apiClient.get('chemistry/tasks/', { params: { page_size: 500 } });
-        const tasks = (res.data?.items || []).filter((t) =>
-          t.status === 'done' || t.status === 'completed' || t.status === 'ВЫПОЛНЕНО'
-        );
-        const byId = {};
-        tasks.forEach((t) => {
-          const comp = t.components || t.elements || [];
-          if (comp.length) {
-            comp.forEach((c) => {
-              const id = c.chemistry_id ?? c.element_id ?? c.id ?? t.chemistry;
-              if (id) byId[id] = { id, name: c.element_name ?? c.name ?? t.chemistry_name ?? '—', unit: c.unit ?? t.unit ?? 'кг' };
-            });
-          } else {
-            const id = t.chemistry?.id ?? t.chemistry;
-            if (id) byId[id] = { id, name: t.chemistry?.name ?? t.chemistry_name ?? '—', unit: t.unit ?? 'кг' };
-          }
-        });
-        setChemistryElements(Object.values(byId));
+        const r = await apiClient.get('chemistry/elements/', { params: { page_size: 500 } });
+        const elements = (r.data?.items || []).map(toItem);
+        setChemistryElements(elements);
       } catch (_) {
-        apiClient.get('chemistry/elements/', { params: { page_size: 500 } })
-          .then((r) => setChemistryElements(r.data?.items || []))
-          .catch(() => setChemistryElements([]));
+        setChemistryElements([]);
       }
     };
-    loadConfirmed();
+    loadElements();
   }, []);
+
+  const extractUnit = (obj) => {
+    const u = obj?.unit ?? obj?.unit_of_measure;
+    if (typeof u === 'string') return u;
+    if (u && typeof u === 'object') return u.code ?? u.short ?? u.name ?? 'кг';
+    return 'кг';
+  };
 
   const items = compType === TYPE_RAW ? rawMaterials : chemistryElements;
 
+  useEffect(() => {
+    if (!rawMaterials.length && !chemistryElements.length) return;
+    setComponents((prev) => {
+      if (prev.length === 0) return prev;
+      const needsEnrich = prev.some((c) => !c.name || c.name === '—');
+      if (!needsEnrich) return prev;
+      return prev.map((c) => {
+        if (c.name && c.name !== '—') return c;
+        const list = c.type === TYPE_RAW ? rawMaterials : chemistryElements;
+        const found = list.find((i) => String(i.id) === String(c.id));
+        return { ...c, name: found?.name || c.name || '—' };
+      });
+    });
+  }, [rawMaterials, chemistryElements]);
+
+  const selectedItem = selectedId ? items.find((i) => String(i.id) === String(selectedId)) : null;
+  const displayUnit = selectedItem ? extractUnit(selectedItem) : 'кг';
+
   const addComponent = () => {
-    const id = Number(selectedId);
-    if (!id || !quantity) return;
-    const item = items.find((i) => i.id === id);
+    const id = selectedId === '' || selectedId == null ? null : (Number(selectedId) || selectedId);
+    if (id == null || id === '' || quantity === '' || quantity == null) return;
+    const item = items.find((i) => String(i.id) === String(selectedId) || i.id === id);
+    const itemUnit = item ? extractUnit(item) : 'кг';
     setComponents((prev) => [...prev, {
       type: compType,
       id,
       name: item?.name || '—',
       quantity: Number(quantity),
-      unit: unit || 'кг',
+      unit: itemUnit,
     }]);
     setQuantity('');
   };
@@ -238,14 +284,12 @@ const RecipeModal = ({ recipe, onSubmit, onClose, error }) => {
     const body = {
       name,
       product: name,
-      components: components.map((c) => ({
-        type: c.type,
-        material_id: c.type === TYPE_RAW ? c.id : undefined,
-        chemistry_id: c.type === TYPE_CHEMISTRY ? c.id : undefined,
-        element_id: c.type === TYPE_CHEMISTRY ? c.id : undefined,
-        quantity: c.quantity,
-        unit: c.unit || 'кг',
-      })),
+      components: components.map((c) => {
+        const comp = { type: c.type, quantity: c.quantity, unit: c.unit || 'кг' };
+        if (c.type === TYPE_RAW) comp.material_id = c.id;
+        if (c.type === TYPE_CHEMISTRY) comp.chemistry_id = c.id;
+        return comp;
+      }),
     };
     onSubmit(body);
   };
@@ -257,6 +301,9 @@ const RecipeModal = ({ recipe, onSubmit, onClose, error }) => {
           <h3>{isEdit ? 'Редактировать' : 'Создать'}</h3>
           <button type="button" className="modal__close" onClick={onClose} aria-label="Закрыть">×</button>
         </div>
+        {loading ? (
+          <Loading />
+        ) : (
         <form onSubmit={handleSubmit}>
           <label>Рецепт</label>
           <input
@@ -271,10 +318,13 @@ const RecipeModal = ({ recipe, onSubmit, onClose, error }) => {
               <option value={TYPE_RAW}>Сырьё (из Склада сырья)</option>
               <option value={TYPE_CHEMISTRY}>Хим. элемент (из остатков)</option>
             </select>
-            <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
+            <select
+              value={selectedId}
+              onChange={(e) => setSelectedId(e.target.value)}
+            >
               <option value="">— Выберите —</option>
-              {items.map((i) => (
-                <option key={i.id} value={i.id}>{i.name} ({i.unit || 'кг'})</option>
+              {items.map((i, idx) => (
+                <option key={`opt-${compType}-${idx}`} value={i.id}>{i.name} ({extractUnit(i)})</option>
               ))}
             </select>
             <input
@@ -286,13 +336,15 @@ const RecipeModal = ({ recipe, onSubmit, onClose, error }) => {
               onChange={(e) => setQuantity(e.target.value)}
               className="recipe-modal__qty"
             />
-            <input
-              placeholder="ед."
-              value={unit}
-              onChange={(e) => setUnit(e.target.value)}
-              className="recipe-modal__unit"
-            />
-            <button type="button" className="btn btn--secondary" onClick={addComponent}>
+            <span className="recipe-modal__unit-display" title="ед. изм. берётся из выбранного элемента">
+              {displayUnit}
+            </span>
+            <button
+              type="button"
+              className="btn btn--secondary"
+              onClick={addComponent}
+              disabled={!selectedId || !quantity}
+            >
               Добавить
             </button>
           </div>
@@ -320,6 +372,7 @@ const RecipeModal = ({ recipe, onSubmit, onClose, error }) => {
             <button type="button" className="btn btn--secondary" onClick={onClose}>Отмена</button>
           </div>
         </form>
+        )}
       </div>
     </div>
   );

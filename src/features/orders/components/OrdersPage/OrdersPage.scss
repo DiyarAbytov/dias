@@ -1,46 +1,84 @@
 @use '../../../../shared/styles/variables' as *;
 @use '../../../../shared/styles/mixins' as *;
 
-.page--recipes {
+.page--orders {
   .page__title {
     margin-bottom: 0.5rem;
   }
 }
 
-.recipes-nav {
+.orders-statuses {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+
+  &__label {
+    font-size: 0.95rem;
+    color: var(--muted);
+    margin-right: 0.25rem;
+  }
+
+  &__tab {
+    padding: 0.4rem 0.75rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    background: transparent;
+    color: var(--muted);
+
+    &--gray { color: var(--muted); }
+    &--orange { color: var(--warning); }
+    &--green { color: var(--success); }
+    &:hover {
+      opacity: 0.9;
+    }
+
+    &--active {
+      &.orders-statuses__tab--gray {
+        background: var(--border);
+        color: var(--text);
+        border-left: 3px solid var(--accent);
+      }
+      &.orders-statuses__tab--orange {
+        background: rgba(210, 153, 34, 0.2);
+        color: var(--warning);
+      }
+      &.orders-statuses__tab--green {
+        background: rgba(63, 185, 80, 0.2);
+        color: var(--success);
+      }
+    }
+  }
+}
+
+.orders-nav {
   margin-bottom: 1rem;
   font-size: 0.95rem;
 
   &__link {
     color: var(--accent);
     text-decoration: none;
-
-    &:hover {
-      text-decoration: underline;
-    }
+    &:hover { text-decoration: underline; }
   }
-
   &__sep {
     margin: 0 0.5rem;
     color: var(--muted);
   }
+  &__current {
+    color: var(--text);
+  }
 }
 
-.recipes-banner {
-  margin-bottom: 1rem;
-  padding: 0.75rem 1rem;
-  background: rgba(88, 166, 255, 0.1);
-  border: 1px solid var(--accent);
-  border-radius: 8px;
-  color: var(--accent);
-  font-size: 0.95rem;
-}
-
-.recipes-card {
+.orders-card {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1.5rem;
+  margin-bottom: 1.5rem;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
 
   &__head {
@@ -58,36 +96,25 @@
     color: var(--text);
   }
 
-  &__actions {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
+  &__line-select {
     margin-left: auto;
-  }
-
-  &__search {
     padding: 0.5rem 0.75rem;
-    min-width: 220px;
+    min-width: 200px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 8px;
     color: var(--text);
     font-size: 0.95rem;
-
-    &::placeholder {
-      color: var(--muted);
-    }
   }
 }
 
-.recipes-table {
+.orders-table {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 
   &__header {
     display: grid;
-    grid-template-columns: 1fr 1.5fr 160px;
     gap: 1rem;
     padding: 0.5rem 0;
     font-size: 0.75rem;
@@ -98,29 +125,55 @@
     border-bottom: 1px solid var(--border);
   }
 
+  &--in-progress &__header {
+    grid-template-columns: 120px 1fr 100px 180px;
+  }
+
+  &--main &__header {
+    grid-template-columns: 120px 1fr 1fr 140px 100px 180px;
+  }
+
   &__row {
     display: grid;
-    grid-template-columns: 1fr 1.5fr 160px;
     gap: 1rem;
     align-items: center;
-    padding: 0.85rem 1rem;
+    padding: 0.75rem 1rem;
     background: rgba(0, 0, 0, 0.2);
     border-radius: 8px;
     border: 1px solid var(--border);
   }
 
-  &__name {
-    color: var(--text);
-    font-weight: 500;
+  &--in-progress &__row {
+    grid-template-columns: 120px 1fr 100px 180px;
   }
 
-  &__composition {
-    font-size: 0.95rem;
-    color: var(--muted);
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  &--main &__row {
+    grid-template-columns: 120px 1fr 1fr 140px 100px 180px;
+  }
+
+  &__status {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 500;
+
+    &--gray {
+      background: var(--border);
+      color: var(--text);
+    }
+    &--orange {
+      background: var(--warning);
+      color: #fff;
+    }
+    &--green {
+      background: var(--success);
+      color: #fff;
+    }
+    &--red {
+      background: var(--danger);
+      color: #fff;
+    }
   }
 
   &__th--actions {
@@ -134,63 +187,14 @@
   }
 }
 
-.recipe-modal {
-  &__row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    align-items: center;
-    margin-bottom: 1rem;
-  }
-
-  &__qty {
-    width: 80px !important;
-  }
-
-  &__unit {
-    width: 70px !important;
-  }
-
-  &__unit-display {
-    display: inline-flex;
-    align-items: center;
-    min-width: 70px;
-    padding: 0.6rem 0.75rem;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    color: var(--text);
-    font-size: 0.95rem;
-  }
-
-  &__table {
-    margin-bottom: 1rem;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    overflow: hidden;
-  }
-
-  &__table-header {
-    display: grid;
-    grid-template-columns: 1fr 1fr auto 40px;
-    gap: 1rem;
-    padding: 0.5rem 0.75rem;
-    background: rgba(0, 0, 0, 0.2);
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--muted);
-  }
-
-  &__table-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr auto 40px;
-    gap: 1rem;
-    align-items: center;
-    padding: 0.5rem 0.75rem;
-    border-top: 1px solid var(--border);
-  }
+.orders-modal-banner {
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.75rem;
+  background: rgba(88, 166, 255, 0.1);
+  border-left: 4px solid var(--accent);
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: 0.9rem;
 }
 
 .btn {
@@ -206,24 +210,16 @@
     color: #fff;
     border-color: var(--accent);
   }
-
   &--secondary {
     background: var(--border);
     color: var(--text);
     border-color: var(--border);
-
-    &:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
   }
-
   &--danger {
     background: var(--danger);
     color: #fff;
     border-color: var(--danger);
   }
-
   &--sm {
     padding: 0.4rem 0.75rem;
     font-size: 0.85rem;
@@ -246,17 +242,12 @@
   min-width: 360px;
   max-width: 90vw;
 
-  &--wide {
-    min-width: 520px;
-  }
-
   &__head {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 1rem;
   }
-
   &__close {
     background: none;
     border: none;
@@ -265,28 +256,21 @@
     cursor: pointer;
     line-height: 1;
     padding: 0 0.25rem;
-
-    &:hover {
-      color: var(--text);
-    }
+    &:hover { color: var(--text); }
   }
-
   h3 {
     margin: 0;
     font-size: 1.1rem;
     color: var(--text);
   }
-
   label {
     display: block;
     margin-bottom: 0.25rem;
     font-size: 0.9rem;
     color: var(--muted);
   }
-
   input,
-  select,
-  textarea {
+  select {
     width: 100%;
     padding: 0.6rem 0.75rem;
     margin-bottom: 1rem;
@@ -296,16 +280,13 @@
     color: var(--text);
     font-size: 0.95rem;
   }
-
   &__error {
     color: var(--danger);
     font-size: 0.9rem;
     margin: 0 0 1rem;
   }
-
   &__actions {
     display: flex;
-    justify-content: flex-start;
     gap: 0.75rem;
     margin-top: 1rem;
   }

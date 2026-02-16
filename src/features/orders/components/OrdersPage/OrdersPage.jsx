@@ -1,110 +1,311 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useServerQuery } from '../../../../shared/lib';
-import { ServerList, FilterBar } from '../../../../shared/ui';
+import { Loading, EmptyState, ErrorState, ConfirmModal } from '../../../../shared/ui';
+import { createOrder, updateOrder, deleteOrder, getOrder } from '../../api/ordersApi';
+import { apiClient } from '../../../../shared/api';
+import './OrdersPage.scss';
 
-const ORDERS_FILTERS = [
-  { key: 'status', type: 'select', placeholder: 'Статус', options: [
-    { value: 'created', label: 'Создан' },
-    { value: 'in_progress', label: 'В работе' },
-    { value: 'done', label: 'Выполнен' },
-  ]},
-  { key: 'recipe', type: 'select', placeholder: 'Рецепт', options: [] },
-  { key: 'line', type: 'select', placeholder: 'Линия', options: [] },
-  {
-    key: 'ordering',
-    type: 'ordering',
-    placeholder: 'Сортировка',
-    options: [
-      { value: 'id', label: 'По ID' },
-      { value: '-id', label: 'По ID (убыв.)' },
-      { value: 'date', label: 'По дате' },
-      { value: '-date', label: 'По дате (убыв.)' },
-      { value: 'status', label: 'По статусу' },
-      { value: '-status', label: 'По статусу (убыв.)' },
-    ],
-  },
+const STATUSES = [
+  { value: 'created', label: 'СОЗДАН', color: 'gray' },
+  { value: 'in_progress', label: 'В РАБОТЕ', color: 'orange' },
+  { value: 'done', label: 'ВЫПОЛНЕН', color: 'green' },
 ];
 
-const cleanQuery = (q) => {
-  const copy = { ...q };
-  Object.keys(copy).forEach((k) => {
-    if (copy[k] === '' || copy[k] == null) delete copy[k];
-  });
-  return copy;
-};
-
-const statusLabel = (s) => ({ created: 'Создан', in_progress: 'В работе', done: 'Выполнен' }[s] ?? s);
-
 const OrdersPage = () => {
-  const [queryState, setQueryState] = useState({
-    page: 1,
-    page_size: 20,
-    status: '',
-    recipe: '',
-    line: '',
-    ordering: '',
-  });
+  const [statusFilter, setStatusFilter] = useState('');
+  const [query, setQuery] = useState({ page: 1, page_size: 50 });
+  const [modalOpen, setModalOpen] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [submitError, setSubmitError] = useState('');
+  const [lineFilterInProgress, setLineFilterInProgress] = useState('');
 
-  const { items, meta, loading, error, refetch } = useServerQuery('orders/', queryState);
+  const [lines, setLines] = useState([]);
+  const [recipes, setRecipes] = useState([]);
 
-  const handleFilterChange = useCallback((patch) => {
-    setQueryState((prev) => ({ ...prev, ...patch, page: 1 }));
+  const queryWithStatus = statusFilter ? { ...query, status: statusFilter } : query;
+  const { items: orders, loading, error, refetch } = useServerQuery(
+    'orders/',
+    queryWithStatus,
+    { enabled: true }
+  );
+
+  useEffect(() => {
+    apiClient.get('lines/', { params: { page_size: 500 } })
+      .then((res) => setLines(res.data?.items || []))
+      .catch(() => setLines([]));
+  }, []);
+  useEffect(() => {
+    apiClient.get('recipes/', { params: { page_size: 500 } })
+      .then((res) => setRecipes(res.data?.items || []))
+      .catch(() => setRecipes([]));
   }, []);
 
-  const handlePageChange = useCallback((page) => {
-    setQueryState((prev) => ({ ...prev, page }));
-  }, []);
+  const ordersInProgress = orders.filter((o) =>
+    (o.status === 'in_progress' || o.status === 'В РАБОТЕ')
+  );
+  const ordersInProgressByLine = lineFilterInProgress
+    ? ordersInProgress.filter((o) => String(o.line?.id ?? o.line_id ?? o.line) === String(lineFilterInProgress))
+    : ordersInProgress;
+
+  const handleSubmit = async (data) => {
+    setSubmitError('');
+    try {
+      if (modalOpen?.id) {
+        await updateOrder(modalOpen.id, data);
+      } else {
+        await createOrder(data);
+      }
+      setModalOpen(null);
+      refetch();
+    } catch (err) {
+      setSubmitError(err.response?.data?.error || err.response?.data?.details || 'Ошибка');
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setSubmitError('');
+    try {
+      await deleteOrder(deleteTarget.id);
+      setDeleteTarget(null);
+      refetch();
+    } catch (err) {
+      setSubmitError(err.response?.data?.error || 'Ошибка удаления');
+    }
+  };
+
+  const statusLabel = (s) => {
+    const v = (s || '').toLowerCase();
+    if (v === 'created' || v === 'создан') return 'СОЗДАН';
+    if (v === 'in_progress' || v === 'в работе') return 'В РАБОТЕ';
+    if (v === 'done' || v === 'выполнен' || v === 'принято') return 'ВЫПОЛНЕН';
+    return s || '—';
+  };
+
+  const statusColor = (s) => {
+    const v = (s || '').toLowerCase();
+    if (v === 'created' || v === 'создан') return 'gray';
+    if (v === 'in_progress' || v === 'в работе') return 'orange';
+    if (v === 'done' || v === 'выполнен' || v === 'принято') return 'green';
+    return 'gray';
+  };
+
+  const productName = (o) => o.product_name || o.product?.name || o.product || o.recipe?.name || o.recipe_name || o.recipe || '—';
+  const recipeName = (o) => o.recipe_name || o.recipe?.name || o.recipe || '—';
+  const lineName = (o) => o.line?.name || o.line_name || o.line || '—';
+  const formatDate = (d) => (d ? (typeof d === 'string' ? d.slice(0, 10) : d) : '—');
 
   return (
     <div className="page page--orders">
-      <h1 className="page__title">Заказы на производство</h1>
-      <ServerList
-        loading={loading}
-        error={error}
-        items={items}
-        meta={meta}
-        onRetry={refetch}
-        renderFilters={() => (
-          <FilterBar
-            filters={ORDERS_FILTERS}
-            queryState={cleanQuery(queryState)}
-            onChange={handleFilterChange}
-          />
-        )}
-        renderTable={(listItems) => (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Рецепт</th>
-                <th>Линия</th>
-                <th>Кол-во</th>
-                <th>Дата</th>
-                <th>Статус</th>
-              </tr>
-            </thead>
-            <tbody>
-              {listItems.map((o) => (
-                <tr key={o.id}>
-                  <td>{o.id}</td>
-                  <td>{o.recipe?.recipe ?? o.recipe}</td>
-                  <td>{o.line?.name ?? o.line}</td>
-                  <td>{o.quantity}</td>
-                  <td>{o.date}</td>
-                  <td>{statusLabel(o.status)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        renderPagination={(m) => (
-          <>
-            {m.page > 1 && <button onClick={() => handlePageChange(m.page - 1)}>← Назад</button>}
-            <span>Страница {m.page} из {m.total_pages}</span>
-            {m.page < m.total_pages && <button onClick={() => handlePageChange(m.page + 1)}>Вперёд →</button>}
-          </>
-        )}
+      <h1 className="page__title">Заказы</h1>
+
+      <div className="orders-statuses">
+        <span className="orders-statuses__label">Статусы:</span>
+        {STATUSES.map((st) => (
+          <button
+            key={st.value}
+            type="button"
+            className={`orders-statuses__tab orders-statuses__tab--${st.color} ${statusFilter === st.value ? 'orders-statuses__tab--active' : ''}`}
+            onClick={() => setStatusFilter(statusFilter === st.value ? '' : st.value)}
+          >
+            {st.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="orders-nav">
+        <Link to="/recipes" className="orders-nav__link">Рецепты</Link>
+        <span className="orders-nav__sep">→</span>
+        <span className="orders-nav__current">Производство</span>
+      </div>
+
+      {loading && <Loading />}
+      {error && error.status !== 404 && <ErrorState error={error} onRetry={refetch} />}
+
+      {!loading && (!error || error.status === 404) && (
+        <>
+          <div className="orders-card">
+            <div className="orders-card__head">
+              <h2 className="orders-card__title">Заказы в работе</h2>
+              <select
+                className="orders-card__line-select"
+                value={lineFilterInProgress}
+                onChange={(e) => setLineFilterInProgress(e.target.value)}
+              >
+                <option value="">Все линии</option>
+                {lines.map((l) => (
+                  <option key={l.id} value={l.id}>{l.name}</option>
+                ))}
+              </select>
+            </div>
+            {ordersInProgressByLine.length === 0 ? (
+              <EmptyState title="Нет заказов в работе" />
+            ) : (
+              <div className="orders-table orders-table--in-progress">
+                <div className="orders-table__header">
+                  <span className="orders-table__th">СТАТУС</span>
+                  <span className="orders-table__th">ПРОДУКТ</span>
+                  <span className="orders-table__th">ВЫПУЩЕНО</span>
+                  <span className="orders-table__th orders-table__th--actions">ДЕЙСТВИЯ</span>
+                </div>
+                {ordersInProgressByLine.map((o) => (
+                  <div key={o.id} className="orders-table__row">
+                    <span>{o.batch || o.batch_id || `#${o.id}`}</span>
+                    <span>{productName(o)}</span>
+                    <span>{o.quantity ?? o.produced ?? o.released ?? '—'}</span>
+                    <div className="orders-table__actions">
+                      <button type="button" className="btn btn--secondary btn--sm" onClick={() => setModalOpen(o)}>Редактировать</button>
+                      <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ id: o.id, name: productName(o) })}>Удалить</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="orders-card">
+            <div className="orders-card__head">
+              <h2 className="orders-card__title">Заказы</h2>
+              <button type="button" className="btn btn--primary" onClick={() => setModalOpen({})}>
+                Создать
+              </button>
+            </div>
+            {orders.length === 0 ? (
+              <EmptyState title="Нет данных" />
+            ) : (
+              <div className="orders-table orders-table--main">
+                <div className="orders-table__header">
+                  <span className="orders-table__th">СТАТУС</span>
+                  <span className="orders-table__th">ПРОДУКТ</span>
+                  <span className="orders-table__th">РЕЦЕПТ</span>
+                  <span className="orders-table__th">ЛИНИЯ</span>
+                  <span className="orders-table__th">ДАТА</span>
+                  <span className="orders-table__th orders-table__th--actions">ДЕЙСТВИЯ</span>
+                </div>
+                {orders.map((o) => (
+                  <div key={o.id} className="orders-table__row">
+                    <span className={`orders-table__status orders-table__status--${statusColor(o.status)}`}>
+                      {statusLabel(o.status)}
+                    </span>
+                    <span>{productName(o)}</span>
+                    <span>{recipeName(o)}</span>
+                    <span>{lineName(o)}</span>
+                    <span>{formatDate(o.date || o.created_at)}</span>
+                    <div className="orders-table__actions">
+                      <button type="button" className="btn btn--secondary btn--sm" onClick={() => setModalOpen(o)}>Редактировать</button>
+                      <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ id: o.id, name: productName(o) })}>Удалить</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {modalOpen !== null && (
+        <OrderModal
+          order={modalOpen?.id ? modalOpen : null}
+          onFetchOrder={modalOpen?.id ? getOrder : undefined}
+          lines={lines}
+          recipes={recipes}
+          onSubmit={handleSubmit}
+          onClose={() => { setModalOpen(null); setSubmitError(''); }}
+          error={submitError}
+        />
+      )}
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        title="Удалить?"
+        message={deleteTarget ? `Удалить заказ "${deleteTarget.name}"?` : ''}
+        confirmText="Удалить"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
       />
+    </div>
+  );
+};
+
+const OrderModal = ({ order, onFetchOrder, lines, recipes, onSubmit, onClose, error }) => {
+  const isEdit = !!order?.id;
+  const [recipeId, setRecipeId] = useState('');
+  const [lineId, setLineId] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const init = (o) => {
+      setRecipeId(o?.recipe_id ?? o?.recipe?.id ?? o?.recipe ?? '');
+      setLineId(o?.line_id ?? o?.line?.id ?? o?.line ?? '');
+      setQuantity(o?.quantity ?? '');
+    };
+    if (order?.id && onFetchOrder) {
+      setLoading(true);
+      onFetchOrder(order.id)
+        .then((res) => init(res.data))
+        .catch(() => init(order))
+        .finally(() => setLoading(false));
+    } else {
+      init(order || {});
+    }
+  }, [order?.id, onFetchOrder]);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit({
+      recipe_id: recipeId ? Number(recipeId) : undefined,
+      line_id: lineId ? Number(lineId) : undefined,
+      quantity: quantity ? Number(quantity) : undefined,
+    });
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal__head">
+          <h3>{isEdit ? 'Редактировать' : 'Создать'}</h3>
+          <button type="button" className="modal__close" onClick={onClose} aria-label="Закрыть">×</button>
+        </div>
+        {loading ? (
+          <Loading />
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <label>Рецепт</label>
+            <select value={recipeId} onChange={(e) => setRecipeId(e.target.value)} required>
+              <option value="">— Выберите —</option>
+              {recipes.map((r) => (
+                <option key={r.id} value={r.id}>{r.name || r.recipe_name || r.product || r.id}</option>
+              ))}
+            </select>
+            <div className="orders-modal-banner">
+              Доступны только подтверждённые рецепты.
+            </div>
+            <label>Линия</label>
+            <select value={lineId} onChange={(e) => setLineId(e.target.value)} required>
+              <option value="">— Выберите —</option>
+              {lines.map((l) => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+            <label>Кол-во</label>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              required
+            />
+            {error && <p className="modal__error">{error}</p>}
+            <div className="modal__actions">
+              <button type="submit" className="btn btn--primary">{isEdit ? 'Сохранить' : 'Создать'}</button>
+              <button type="button" className="btn btn--secondary" onClick={onClose}>Отмена</button>
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   );
 };
