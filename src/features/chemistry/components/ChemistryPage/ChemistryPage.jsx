@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useServerQuery } from '../../../../shared/lib';
-import { Loading, EmptyState, ErrorState, ConfirmModal } from '../../../../shared/ui';
+import { Loading, EmptyState, ErrorState, ConfirmModal, useToast } from '../../../../shared/ui';
 import {
   createChemicalElement,
   updateChemicalElement,
   deleteChemicalElement,
   createChemistryTask,
+  updateChemistryTask,
   deleteChemistryTask,
   confirmChemistryTask,
 } from '../../api/chemistryApi';
@@ -19,96 +20,68 @@ const UNITS = [
   { value: 'мл', label: 'мл' },
 ];
 
+const formatDate = (d) => (d ? (typeof d === 'string' ? d.slice(0, 10) : d) : '—');
+
+const apiError = (err) => {
+  const data = err?.response?.data;
+  if (!data || typeof data !== 'object') return err?.message || 'Ошибка';
+  if (data.code === 'INSUFFICIENT_STOCK') {
+    const base = data.error || 'Недостаточно остатков сырья.';
+    const missing = data.missing;
+    if (Array.isArray(missing) && missing.length) {
+      const rows = missing.map((m) =>
+        typeof m === 'object'
+          ? `${m.component || m.raw_material || m.name || '—'}: требуется ${m.required ?? '?'} ${m.unit || ''}, доступно ${m.available ?? 0}`
+          : String(m)
+      );
+      return `${base} ${rows.join('; ')}`;
+    }
+    return base;
+  }
+  return data.error || 'Ошибка';
+};
+
 const ChemistryPage = () => {
-  const [activeTab, setActiveTab] = useState('plan');
+  const toast = useToast();
+  const [activeTab, setActiveTab] = useState('elements');
   const [dirQuery, setDirQuery] = useState({ page: 1, page_size: 20, search: '' });
-  const [planQuery, setPlanQuery] = useState({ page: 1, page_size: 20 });
+  const [taskQuery, setTaskQuery] = useState({ page: 1, page_size: 20 });
   const [dirModal, setDirModal] = useState(null);
-  const [planModal, setPlanModal] = useState(false);
+  const [taskModal, setTaskModal] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [confirmTarget, setConfirmTarget] = useState(null);
   const [submitError, setSubmitError] = useState('');
-  const [confirmingIds, setConfirmingIds] = useState(new Set());
 
   const { items: elements, loading: dirLoading, error: dirError, refetch: refetchDir } = useServerQuery(
     'chemistry/elements/',
-    activeTab === 'directory' ? dirQuery : activeTab === 'plan' ? { page_size: 500 } : { page_size: 1 },
-    { enabled: activeTab === 'directory' || activeTab === 'plan' }
+    activeTab === 'elements' ? dirQuery : { page_size: 500 },
+    { enabled: activeTab === 'elements' || activeTab === 'tasks' }
   );
 
-  const { items: tasks, loading: planLoading, error: planError, refetch: refetchPlan } = useServerQuery(
+  const { items: tasks, loading: taskLoading, error: taskError, refetch: refetchTasks } = useServerQuery(
     'chemistry/tasks/',
-    activeTab === 'plan' ? planQuery : activeTab === 'balances' ? { page_size: 500 } : { page_size: 1 },
-    { enabled: activeTab === 'plan' || activeTab === 'balances' }
+    activeTab === 'tasks' ? taskQuery : activeTab === 'balances' ? { page_size: 500 } : { page_size: 1 },
+    { enabled: activeTab === 'tasks' || activeTab === 'balances' }
   );
 
+  const [balances, setBalances] = useState([]);
+  const [balancesLoading, setBalancesLoading] = useState(false);
   const [balancesSearch, setBalancesSearch] = useState('');
 
-  const formatDate = (d) => (d ? (typeof d === 'string' ? d.slice(0, 10) : d) : '—');
-
-  const renderTaskElements = (task) => {
-    const comp = task.components || task.elements || [];
-    if (Array.isArray(comp) && comp.length) {
-      return comp.map((c) => `${c.element_name || c.name || '—'} — ${c.quantity} ${c.unit || 'кг'}`).join(', ');
-    }
-    const name = task.chemistry_name || task.chemistry_name_ || (task.chemistry && typeof task.chemistry === 'object' ? task.chemistry.name : null);
-    if (name != null) return `${name} — ${task.quantity} ${task.unit || 'кг'}`;
-    return task.elements_display || (task.quantity != null ? `ID ${task.chemistry} — ${task.quantity} ${task.unit || 'кг'}` : '—');
-  };
-
-  const taskStatus = (task) => (task.status === 'completed' || task.status === 'ВЫПОЛНЕНО' || task.status === 'done') ? 'completed' : 'pending';
-
-  const groupTasksByPlan = (list) => {
-    const groups = {};
-    list.forEach((t) => {
-      const key = `${t.name || t.title || ''}|${formatDate(t.deadline || t.term)}`;
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(t);
-    });
-    return Object.values(groups).map((grp) => ({
-      name: grp[0].name || grp[0].title,
-      deadline: grp[0].deadline || grp[0].term,
-      tasks: grp,
-      status: grp.some((t) => taskStatus(t) === 'pending') ? 'pending' : 'completed',
-      elementsText: grp.map((t) => renderTaskElements(t)).join(', '),
-      quantityText: grp.map((t) => `${t.quantity} ${t.unit || 'кг'}`).join(', '),
-    }));
-  };
-
-  const planGroups = groupTasksByPlan(tasks);
-  const completedPlanGroups = planGroups.filter((grp) => grp.status === 'completed');
+  useEffect(() => {
+    if (activeTab !== 'balances') return;
+    setBalancesLoading(true);
+    apiClient.get('chemistry/balances/').then((res) => {
+      const raw = res.data?.items ?? res.data ?? [];
+      setBalances(Array.isArray(raw) ? raw : []);
+    }).catch(() => setBalances([])).finally(() => setBalancesLoading(false));
+  }, [activeTab]);
 
   const balancesFiltered = balancesSearch.trim()
-    ? completedPlanGroups.filter((grp) => {
-        const s = balancesSearch.trim().toLowerCase();
-        return (grp.name || '').toLowerCase().includes(s) || grp.elementsText.toLowerCase().includes(s);
-      })
-    : completedPlanGroups;
-
-  const chemistryApiError = (err) => {
-    if (err.response?.status === 404) {
-      return 'Сервис «Хим. элементы» пока не подключён. Добавьте на сервере эндпоинты: /api/chemistry/elements/, /api/chemistry/tasks/, /api/chemistry/balances/';
-    }
-    const data = err.response?.data;
-    if (data && typeof data === 'object') {
-      if (data.code === 'ALREADY_DONE') return data.error || 'Задание уже выполнено.';
-      if (data.code === 'INSUFFICIENT_STOCK') {
-        const base = data.error || 'Недостаточно остатков сырья.';
-        const missing = data.missing;
-        if (Array.isArray(missing) && missing.length) {
-          const details = missing.map((m) => (typeof m === 'object' ? `${m.component || m.raw_material}: требуется ${m.required} ${m.unit || ''}, доступно ${m.available ?? 0}` : String(m))).join('; ');
-          return `${base} ${details}. Сделайте приход на складе сырья.`;
-        }
-        return `${base} Сделайте приход на складе сырья.`;
-      }
-      if (data.error) return data.error;
-      const parts = Object.entries(data).filter(([k]) => k !== 'error' && k !== 'code').map(([k, v]) => {
-        const msg = Array.isArray(v) ? v.map((e) => (e && typeof e === 'object' ? e.string : e)).join(', ') : String(v);
-        return `${k}: ${msg}`;
-      });
-      if (parts.length) return parts.join('; ');
-    }
-    return data?.error || 'Ошибка';
-  };
+    ? balances.filter((b) =>
+        (b.element_name || '').toLowerCase().includes(balancesSearch.trim().toLowerCase())
+      )
+    : balances;
 
   const handleDirSubmit = async (data) => {
     setSubmitError('');
@@ -120,198 +93,98 @@ const ChemistryPage = () => {
       }
       setDirModal(null);
       refetchDir();
+      toast.show('Успешно сохранено');
     } catch (err) {
-      setSubmitError(chemistryApiError(err));
+      setSubmitError(apiError(err));
     }
   };
 
-  const handlePlanSubmit = async (data) => {
+  const handleTaskSubmit = async (data) => {
     setSubmitError('');
     try {
-      for (const c of data.components) {
-        await createChemistryTask({
-          name: data.name,
-          chemistry: c.element_id,
-          quantity: c.quantity,
-          deadline: data.deadline,
-          unit: c.unit || undefined,
-        });
+      if (taskModal?.id) {
+        await updateChemistryTask(taskModal.id, data);
+      } else {
+        await createChemistryTask(data);
       }
-      setPlanModal(false);
-      refetchPlan();
+      setTaskModal(null);
+      refetchTasks();
+      toast.show('Успешно сохранено');
     } catch (err) {
-      setSubmitError(chemistryApiError(err));
+      setSubmitError(apiError(err));
     }
   };
 
-  const handleConfirmTask = async (id) => {
+  const handleConfirmTask = async () => {
+    if (!confirmTarget) return;
     setSubmitError('');
     try {
-      await confirmChemistryTask(id);
-      refetchPlan();
-    } catch (err) {
-      setSubmitError(chemistryApiError(err));
-    }
-  };
-
-  const handleDeleteDir = async () => {
-    if (!deleteTarget) return;
-    setSubmitError('');
-    try {
-      await deleteChemicalElement(deleteTarget.id);
-      setDeleteTarget(null);
+      await confirmChemistryTask(confirmTarget.id);
+      setConfirmTarget(null);
+      refetchTasks();
       refetchDir();
+      toast.show('Задача подтверждена');
     } catch (err) {
-      setSubmitError(chemistryApiError(err) || 'Ошибка удаления');
+      setSubmitError(apiError(err));
     }
   };
 
-  const handleDeleteTask = async () => {
+  const handleDelete = async () => {
     if (!deleteTarget) return;
-    if (deleteTarget.type === 'planGroup' && deleteTarget.group) {
-      await handleDeleteGroup(deleteTarget.group);
-      return;
-    }
     setSubmitError('');
     try {
-      await deleteChemistryTask(deleteTarget.id);
+      if (deleteTarget.type === 'element') {
+        await deleteChemicalElement(deleteTarget.id);
+        refetchDir();
+      } else {
+        await deleteChemistryTask(deleteTarget.id);
+        refetchTasks();
+      }
       setDeleteTarget(null);
-      refetchPlan();
+      toast.show('Успешно удалено');
     } catch (err) {
-      setSubmitError(chemistryApiError(err) || 'Ошибка удаления');
+      setSubmitError(apiError(err));
     }
   };
 
-  const handleConfirmGroup = async (group) => {
-    const pending = group.tasks.filter((t) => taskStatus(t) === 'pending');
-    if (pending.length === 0) return;
-    const ids = pending.map((t) => t.id);
-    setConfirmingIds((prev) => new Set([...prev, ...ids]));
-    setSubmitError('');
-    try {
-      for (const t of pending) {
-        await confirmChemistryTask(t.id);
-      }
-      refetchPlan();
-    } catch (err) {
-      setSubmitError(chemistryApiError(err));
-    } finally {
-      setConfirmingIds((prev) => {
-        const next = new Set(prev);
-        ids.forEach((id) => next.delete(id));
-        return next;
-      });
-    }
-  };
-
-  const handleDeleteGroup = async (group) => {
-    setSubmitError('');
-    try {
-      for (const t of group.tasks) {
-        await deleteChemistryTask(t.id);
-      }
-      setDeleteTarget(null);
-      refetchPlan();
-    } catch (err) {
-      setSubmitError(chemistryApiError(err) || 'Ошибка удаления');
-    }
+  const taskStatusBadge = (t) => {
+    const s = String(t.status || '').toLowerCase();
+    if (s === 'done' || s === 'completed' || s === 'выполнено') return { label: 'ВЫПОЛНЕНО', cls: 'green' };
+    if (s === 'in_progress') return { label: 'В РАБОТЕ', cls: 'orange' };
+    return { label: 'ОЖИДАЕТ', cls: 'blue' };
   };
 
   return (
     <div className="page page--chemistry">
-      <h1 className="page__title">Хим. элементы</h1>
+      <h1 className="page__title">Химия</h1>
       <div className="chemistry-tabs">
         <button
           type="button"
-          className={`chemistry-tabs__tab ${activeTab === 'plan' ? 'chemistry-tabs__tab--active' : ''}`}
-          onClick={() => setActiveTab('plan')}
+          className={`chemistry-tabs__tab ${activeTab === 'elements' ? 'chemistry-tabs__tab--active' : ''}`}
+          onClick={() => setActiveTab('elements')}
         >
-          План
+          Элементы
         </button>
         <button
           type="button"
-          className={`chemistry-tabs__tab ${activeTab === 'directory' ? 'chemistry-tabs__tab--active' : ''}`}
-          onClick={() => setActiveTab('directory')}
+          className={`chemistry-tabs__tab ${activeTab === 'tasks' ? 'chemistry-tabs__tab--active' : ''}`}
+          onClick={() => setActiveTab('tasks')}
         >
-          Справочник
+          Задачи
         </button>
         <button
           type="button"
           className={`chemistry-tabs__tab ${activeTab === 'balances' ? 'chemistry-tabs__tab--active' : ''}`}
           onClick={() => setActiveTab('balances')}
         >
-          Остатки
+          Склад химии
         </button>
       </div>
 
-      {activeTab === 'plan' && (
-        <>
-          <div className="chemistry-banner">
-            Подтвердите выполнение — элемент станет доступен в Рецептах.
-          </div>
-          <div className="chemistry-card">
-            <div className="chemistry-card__head">
-              <h2 className="chemistry-card__title">План</h2>
-              <button type="button" className="btn btn--primary" onClick={() => setPlanModal(true)}>
-                Добавить
-              </button>
-            </div>
-            {submitError && activeTab === 'plan' && (
-              <div className="chemistry-card__error">
-                {submitError}
-                <button type="button" className="chemistry-card__error-dismiss" onClick={() => setSubmitError('')} aria-label="Закрыть">×</button>
-              </div>
-            )}
-            {planLoading && <Loading />}
-            {planError && planError.status !== 404 && <ErrorState error={planError} onRetry={refetchPlan} />}
-            {!planLoading && (!planError || planError.status === 404) && (
-              planGroups.length === 0 ? (
-                <EmptyState title="Нет данных" />
-              ) : (
-                <div className="chemistry-table chemistry-table--plan">
-                  <div className="chemistry-table__header">
-                    <span className="chemistry-table__th">ЗАДАНИЕ</span>
-                    <span className="chemistry-table__th">ХИМ. ЭЛЕМЕНТЫ</span>
-                    <span className="chemistry-table__th">СТАТУС</span>
-                    <span className="chemistry-table__th chemistry-table__th--actions">ДЕЙСТВИЯ</span>
-                  </div>
-                  {planGroups.map((grp, idx) => (
-                    <div key={`${grp.name}-${grp.deadline}-${idx}`} className="chemistry-table__row">
-                      <span className="chemistry-table__name">{grp.name || '—'}</span>
-                      <span className="chemistry-table__elements">{grp.elementsText || '—'}</span>
-                      <span>
-                        <span className={`chemistry-table__badge chemistry-table__badge--${grp.status}`}>
-                          {grp.status === 'completed' ? 'ВЫПОЛНЕНО' : 'В РАБОТЕ'}
-                        </span>
-                      </span>
-                      <div className="chemistry-table__actions">
-                        {grp.status !== 'completed' && (
-                          <button
-                            type="button"
-                            className="btn btn--success btn--sm"
-                            onClick={() => handleConfirmGroup(grp)}
-                            disabled={grp.tasks.some((t) => confirmingIds.has(t.id))}
-                          >
-                            {grp.tasks.some((t) => confirmingIds.has(t.id)) ? '…' : 'Подтвердить'}
-                          </button>
-                        )}
-                        <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ type: 'planGroup', group: grp, name: grp.name })}>
-                          Удалить
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )
-            )}
-          </div>
-        </>
-      )}
-
-      {activeTab === 'directory' && (
+      {activeTab === 'elements' && (
         <div className="chemistry-card">
           <div className="chemistry-card__head">
-            <h2 className="chemistry-card__title">Справочник</h2>
+            <h2 className="chemistry-card__title">Элементы</h2>
             <div className="chemistry-card__actions">
               <input
                 type="text"
@@ -321,31 +194,37 @@ const ChemistryPage = () => {
                 onChange={(e) => setDirQuery((p) => ({ ...p, search: e.target.value, page: 1 }))}
               />
               <button type="button" className="btn btn--primary" onClick={() => setDirModal({})}>
-                Создать
+                Добавить
               </button>
             </div>
           </div>
           {dirLoading && <Loading />}
-          {dirError && dirError.status !== 404 && <ErrorState error={dirError} onRetry={refetchDir} />}
-          {!dirLoading && (!dirError || dirError.status === 404) && (
+          {dirError && <ErrorState error={dirError} onRetry={refetchDir} />}
+          {!dirLoading && !dirError && (
             elements.length === 0 ? (
               <EmptyState title="Нет данных" />
             ) : (
-              <div className="chemistry-table chemistry-table--directory">
+              <div className="chemistry-table chemistry-table--elements">
                 <div className="chemistry-table__header">
                   <span className="chemistry-table__th">НАЗВАНИЕ</span>
                   <span className="chemistry-table__th">ЕД.</span>
+                  <span className="chemistry-table__th">СОСТАВ</span>
                   <span className="chemistry-table__th chemistry-table__th--actions">ДЕЙСТВИЯ</span>
                 </div>
                 {elements.map((el) => (
                   <div key={el.id} className="chemistry-table__row">
                     <span className="chemistry-table__name">{el.name}</span>
                     <span className="chemistry-table__unit">{el.unit || 'кг'}</span>
+                    <span className="chemistry-table__composition">
+                      {(el.compositions || []).map((c) =>
+                        `${c.raw_material_name || c.raw_material || '—'}: ${c.quantity_per_unit ?? ''}`
+                      ).join(', ') || '—'}
+                    </span>
                     <div className="chemistry-table__actions">
                       <button type="button" className="btn btn--secondary btn--sm" onClick={() => setDirModal(el)}>
                         Редактировать
                       </button>
-                      <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ id: el.id, name: el.name, type: 'element' })}>
+                      <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ type: 'element', id: el.id, name: el.name })}>
                         Удалить
                       </button>
                     </div>
@@ -357,37 +236,106 @@ const ChemistryPage = () => {
         </div>
       )}
 
+      {activeTab === 'tasks' && (
+        <div className="chemistry-card">
+          <div className="chemistry-banner">
+            Подтвердите выполнение — элемент появится на складе химии.
+          </div>
+          <div className="chemistry-card__head">
+            <h2 className="chemistry-card__title">Задачи</h2>
+            <button type="button" className="btn btn--primary" onClick={() => setTaskModal({})}>
+              Добавить
+            </button>
+          </div>
+          {submitError && (
+            <div className="chemistry-card__error">
+              {submitError}
+              <button type="button" className="chemistry-card__error-dismiss" onClick={() => setSubmitError('')} aria-label="Закрыть">×</button>
+            </div>
+          )}
+          {taskLoading && <Loading />}
+          {taskError && <ErrorState error={taskError} onRetry={refetchTasks} />}
+          {!taskLoading && !taskError && (
+            tasks.length === 0 ? (
+              <EmptyState title="Нет задач" />
+            ) : (
+              <div className="chemistry-table chemistry-table--tasks">
+                <div className="chemistry-table__header">
+                  <span className="chemistry-table__th">ЗАДАНИЕ</span>
+                  <span className="chemistry-table__th">ЭЛЕМЕНТ</span>
+                  <span className="chemistry-table__th">КОЛ-ВО</span>
+                  <span className="chemistry-table__th">СРОК</span>
+                  <span className="chemistry-table__th">СТАТУС</span>
+                  <span className="chemistry-table__th chemistry-table__th--actions">ДЕЙСТВИЯ</span>
+                </div>
+                {tasks.map((t) => {
+                  const st = taskStatusBadge(t);
+                  const canConfirm = st.cls !== 'green';
+                  return (
+                    <div key={t.id} className="chemistry-table__row">
+                      <span className="chemistry-table__name">{t.name || '—'}</span>
+                      <span>{t.chemistry_name || t.chemistry || '—'}</span>
+                      <span>{t.quantity} {t.unit || 'кг'}</span>
+                      <span>{formatDate(t.deadline)}</span>
+                      <span>
+                        <span className={`chemistry-table__badge chemistry-table__badge--${st.cls}`}>{st.label}</span>
+                      </span>
+                      <div className="chemistry-table__actions">
+                        {canConfirm && (
+                          <button
+                            type="button"
+                            className="btn btn--success btn--sm"
+                            onClick={() => setConfirmTarget(t)}
+                          >
+                            Подтвердить
+                          </button>
+                        )}
+                        <button type="button" className="btn btn--secondary btn--sm" onClick={() => setTaskModal(t)}>Редактировать</button>
+                        <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ type: 'task', id: t.id, name: t.name })}>
+                          Удалить
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          )}
+        </div>
+      )}
+
       {activeTab === 'balances' && (
         <div className="chemistry-card">
           <div className="chemistry-card__head">
-            <h2 className="chemistry-card__title">Остатки</h2>
+            <h2 className="chemistry-card__title">Склад химии</h2>
             <input
               type="text"
               className="chemistry-card__search"
-              placeholder="По названию..."
+              placeholder="Поиск..."
               value={balancesSearch}
               onChange={(e) => setBalancesSearch(e.target.value)}
             />
           </div>
-          {planLoading && <Loading />}
-          {planError && planError.status !== 404 && <ErrorState error={planError} onRetry={refetchPlan} />}
-          {!planLoading && (!planError || planError.status === 404) && (
+          {balancesLoading && <Loading />}
+          {!balancesLoading && (
             balancesFiltered.length === 0 ? (
-              <EmptyState title="Нет выполненных планов" />
+              <EmptyState title="Нет остатков" />
             ) : (
               <div className="chemistry-table chemistry-table--balances">
                 <div className="chemistry-table__header">
-                  <span className="chemistry-table__th">ЗАДАНИЕ</span>
-                  <span className="chemistry-table__th">ХИМ. ЭЛЕМЕНТЫ</span>
-                  <span className="chemistry-table__th">КОЛИЧЕСТВО</span>
+                  <span className="chemistry-table__th">ЭЛЕМЕНТ</span>
+                  <span className="chemistry-table__th">ЕД.</span>
+                  <span className="chemistry-table__th">ОСТАТОК</span>
                   <span className="chemistry-table__th">ДАТА</span>
+                  <span className="chemistry-table__th">ЗАДАЧА</span>
                 </div>
-                {balancesFiltered.map((grp, idx) => (
-                  <div key={`${grp.name}-${grp.deadline}-${idx}`} className="chemistry-table__row">
-                    <span className="chemistry-table__name">{grp.name || '—'}</span>
-                    <span className="chemistry-table__elements">{grp.elementsText}</span>
-                    <span>{grp.quantityText}</span>
-                    <span className="chemistry-table__date">{formatDate(grp.deadline)}</span>
+                {balancesFiltered.map((b, i) => (
+                  <div key={b.element_name || i} className="chemistry-table__row">
+                    <span className="chemistry-table__name">{b.element_name || '—'}</span>
+                    <span className="chemistry-table__unit">{b.unit || 'кг'}</span>
+                    <span>{b.balance ?? 0}</span>
+                    <span>{formatDate(b.date)}</span>
+                    <span>{b.task_name || '—'}</span>
                   </div>
                 ))}
               </div>
@@ -397,7 +345,7 @@ const ChemistryPage = () => {
       )}
 
       {dirModal !== null && (
-        <DirModal
+        <ElementModal
           item={dirModal?.id ? dirModal : null}
           onSubmit={handleDirSubmit}
           onClose={() => { setDirModal(null); setSubmitError(''); }}
@@ -405,11 +353,12 @@ const ChemistryPage = () => {
         />
       )}
 
-      {planModal && (
-        <PlanModal
+      {taskModal !== null && (
+        <TaskModal
+          item={taskModal?.id ? taskModal : null}
           elements={elements}
-          onSubmit={handlePlanSubmit}
-          onClose={() => { setPlanModal(false); setSubmitError(''); }}
+          onSubmit={handleTaskSubmit}
+          onClose={() => { setTaskModal(null); setSubmitError(''); }}
           error={submitError}
         />
       )}
@@ -419,37 +368,113 @@ const ChemistryPage = () => {
         title="Удалить?"
         message={deleteTarget ? `Удалить "${deleteTarget.name}"?` : ''}
         confirmText="Удалить"
-        onConfirm={deleteTarget?.type === 'element' ? handleDeleteDir : handleDeleteTask}
+        onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      <ConfirmModal
+        open={!!confirmTarget}
+        title="Подтвердить выполнение?"
+        message={confirmTarget ? `Сырьё будет списано, остаток химии пополнится. Задача «${confirmTarget.name}» будет отмечена выполненной.` : ''}
+        confirmText="Подтвердить"
+        onConfirm={handleConfirmTask}
+        onCancel={() => setConfirmTarget(null)}
       />
     </div>
   );
 };
 
-const DirModal = ({ item, onSubmit, onClose, error }) => {
-  const isEdit = !!item?.id;
+const ElementModal = ({ item, onSubmit, onClose, error }) => {
+  const [rawMaterials, setRawMaterials] = useState([]);
   const [name, setName] = useState(item?.name ?? '');
   const [unit, setUnit] = useState(item?.unit ?? 'кг');
+  const [compositions, setCompositions] = useState([]);
+
+  useEffect(() => {
+    apiClient.get('raw-materials/', { params: { page_size: 500 } })
+      .then((r) => setRawMaterials(r.data?.items || []))
+      .catch(() => setRawMaterials([]));
+  }, []);
+
+  useEffect(() => {
+    const comp = item?.compositions || [];
+    const arr = Array.isArray(comp) ? comp.map((c) => ({
+      raw_material_id: c.raw_material ?? c.raw_material_id ?? '',
+      quantity_per_unit: c.quantity_per_unit ?? '',
+    })) : [];
+    setCompositions(arr.length ? arr : [{ raw_material_id: '', quantity_per_unit: '' }]);
+  }, [item?.id]);
+
+  const addRow = () => {
+    setCompositions((prev) => [...prev, { raw_material_id: '', quantity_per_unit: '' }]);
+  };
+
+  const updateRow = (idx, field, value) => {
+    setCompositions((prev) => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], [field]: value };
+      return next;
+    });
+  };
+
+  const removeRow = (idx) => {
+    setCompositions((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const valid = compositions
+      .map((c) => ({
+        raw_material_id: Number(c.raw_material_id),
+        quantity_per_unit: Number(c.quantity_per_unit),
+      }))
+      .filter((c) => c.raw_material_id && c.quantity_per_unit > 0);
+    onSubmit({ name, unit, compositions: valid });
+  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal__head">
-          <h3>{isEdit ? 'Редактировать' : 'Создать'}</h3>
-          <button type="button" className="modal__close" onClick={onClose} aria-label="Закрыть">×</button>
-        </div>
-        <form onSubmit={(e) => { e.preventDefault(); onSubmit({ name, unit: unit || undefined }); }}>
-          <label>Название</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="Название" />
-          <label>Ед.</label>
+      <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
+        <h3>{item ? 'Редактировать элемент' : 'Добавить элемент'}</h3>
+        <form onSubmit={handleSubmit}>
+          <label>Название *</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} required />
+          <label>Ед. *</label>
           <select value={unit} onChange={(e) => setUnit(e.target.value)}>
             {UNITS.map((u) => (
               <option key={u.value} value={u.value}>{u.label}</option>
             ))}
           </select>
+          <label>Состав (сырьё → кол-во на ед.) *</label>
+          {compositions.map((c, i) => (
+            <div key={i} className="element-modal__row">
+              <select
+                value={c.raw_material_id || ''}
+                onChange={(e) => updateRow(i, 'raw_material_id', e.target.value)}
+                required
+              >
+                <option value="">—</option>
+                {rawMaterials.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                placeholder="Кол-во на ед."
+                value={c.quantity_per_unit ?? ''}
+                onChange={(e) => updateRow(i, 'quantity_per_unit', e.target.value)}
+                required
+              />
+              <button type="button" className="btn btn--sm btn--danger" onClick={() => removeRow(i)}>×</button>
+            </div>
+          ))}
+          <button type="button" className="btn btn--secondary btn--sm" onClick={addRow}>+ Добавить компонент</button>
           {error && <p className="modal__error">{error}</p>}
           <div className="modal__actions">
-            <button type="submit" className="btn btn--primary">{isEdit ? 'Сохранить' : 'Создать'}</button>
+            <button type="button" className="btn btn--secondary" onClick={onClose}>Отмена</button>
+            <button type="submit" className="btn btn--primary">Сохранить</button>
           </div>
         </form>
       </div>
@@ -457,92 +482,53 @@ const DirModal = ({ item, onSubmit, onClose, error }) => {
   );
 };
 
-const PlanModal = ({ elements, onSubmit, onClose, error }) => {
-  const [title, setTitle] = useState('');
-  const [deadline, setDeadline] = useState(new Date().toISOString().slice(0, 10));
-  const [components, setComponents] = useState([]);
-  const [selectedElement, setSelectedElement] = useState('');
-  const [quantity, setQuantity] = useState('');
+const TaskModal = ({ item, elements, onSubmit, onClose, error }) => {
+  const [name, setName] = useState(item?.name ?? '');
+  const [chemistry, setChemistry] = useState(item?.chemistry != null ? String(item.chemistry) : '');
+  const [quantity, setQuantity] = useState(item?.quantity ?? '');
+  const [deadline, setDeadline] = useState(item?.deadline ?? '');
 
-  const selectedEl = elements.find((e) => e.id === Number(selectedElement));
-  const displayUnit = selectedEl?.unit || 'кг';
-
-  const addRow = () => {
-    const id = Number(selectedElement);
-    if (!id || !quantity) return;
-    const el = elements.find((e) => e.id === id);
-    const unitFromElement = el?.unit || 'кг';
-    setComponents((prev) => [...prev, { element_id: id, element_name: el?.name, quantity: Number(quantity), unit: unitFromElement }]);
-    setQuantity('');
-  };
-
-  const removeRow = (index) => {
-    setComponents((prev) => prev.filter((_, i) => i !== index));
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const qty = Number(quantity);
+    if (qty <= 0) return;
+    onSubmit({
+      name,
+      chemistry: Number(chemistry),
+      quantity: qty,
+      deadline: deadline || undefined,
+    });
   };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
-        <div className="modal__head">
-          <h3>Добавить</h3>
-          <button type="button" className="modal__close" onClick={onClose} aria-label="Закрыть">×</button>
-        </div>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            onSubmit({
-              name: title,
-              deadline,
-              components: components.map((c) => ({ element_id: c.element_id, quantity: c.quantity, unit: c.unit })),
-            });
-          }}
-        >
-          <label>Название задания</label>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} required placeholder="Название задания" />
-          <label>Хим. элементы</label>
-          <div className="plan-modal__row">
-            <select value={selectedElement} onChange={(e) => setSelectedElement(e.target.value)}>
-              <option value="">— Выберите —</option>
-              {elements.map((el) => (
-                <option key={el.id} value={el.id}>{el.name} ({el.unit || 'кг'})</option>
-              ))}
-            </select>
-            <input
-              type="number"
-              min="0"
-              step="any"
-              placeholder="Кол-во"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              className="plan-modal__qty"
-            />
-            <span className="plan-modal__unit">{displayUnit}</span>
-            <button type="button" className="btn btn--secondary" onClick={addRow}>Добавить</button>
-          </div>
-          {components.length > 0 && (
-            <div className="plan-modal__table">
-              <div className="plan-modal__table-header">
-                <span>ХИМ. ЭЛЕМЕНТ</span>
-                <span>КОЛ-ВО</span>
-                <span>ЕД.</span>
-                <span></span>
-              </div>
-              {components.map((c, i) => (
-                <div key={i} className="plan-modal__table-row">
-                  <span>{c.element_name}</span>
-                  <span>{c.quantity}</span>
-                  <span>{c.unit}</span>
-                  <button type="button" className="btn btn--sm btn--danger" onClick={() => removeRow(i)}>×</button>
-                </div>
-              ))}
-            </div>
-          )}
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>{item ? 'Редактировать задачу' : 'Добавить задачу'}</h3>
+        <form onSubmit={handleSubmit}>
+          <label>Название *</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} required />
+          <label>Элемент химии *</label>
+          <select value={chemistry} onChange={(e) => setChemistry(e.target.value)} required>
+            <option value="">—</option>
+            {elements.map((el) => (
+              <option key={el.id} value={el.id}>{el.name} ({el.unit || 'кг'})</option>
+            ))}
+          </select>
+          <label>Количество *</label>
+          <input
+            type="number"
+            min="0"
+            step="any"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            required
+          />
           <label>Срок</label>
-          <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} required />
+          <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
           {error && <p className="modal__error">{error}</p>}
           <div className="modal__actions">
-            <button type="submit" className="btn btn--primary">Добавить</button>
             <button type="button" className="btn btn--secondary" onClick={onClose}>Отмена</button>
+            <button type="submit" className="btn btn--primary">Сохранить</button>
           </div>
         </form>
       </div>

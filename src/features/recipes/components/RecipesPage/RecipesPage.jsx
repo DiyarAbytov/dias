@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { useServerQuery } from '../../../../shared/lib';
-import { Loading, EmptyState, ErrorState, ConfirmModal } from '../../../../shared/ui';
+import { Loading, EmptyState, ErrorState, ConfirmModal, useToast } from '../../../../shared/ui';
 import { createRecipe, updateRecipe, deleteRecipe, getRecipe } from '../../api/recipesApi';
 import { apiClient } from '../../../../shared/api';
 import './RecipesPage.scss';
 
 const RecipesPage = () => {
+  const toast = useToast();
   const [query, setQuery] = useState({ page: 1, page_size: 20, search: '' });
   const [modalOpen, setModalOpen] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -58,6 +58,7 @@ const RecipesPage = () => {
       }
       setModalOpen(null);
       refetch();
+      toast.show('Успешно сохранено');
     } catch (err) {
       setSubmitError(err.response?.data?.error || err.response?.data?.details || 'Ошибка');
     }
@@ -70,6 +71,7 @@ const RecipesPage = () => {
       await deleteRecipe(deleteTarget.id);
       setDeleteTarget(null);
       refetch();
+      toast.show('Успешно удалено');
     } catch (err) {
       setSubmitError(err.response?.data?.error || 'Ошибка удаления');
     }
@@ -91,11 +93,6 @@ const RecipesPage = () => {
   return (
     <div className="page page--recipes">
       <h1 className="page__title">Рецепты</h1>
-      <div className="recipes-nav">
-        <Link to="/materials" className="recipes-nav__link">Склад сырья</Link>
-        <span className="recipes-nav__sep">•</span>
-        <Link to="/chemistry" className="recipes-nav__link">Хим. элементы</Link>
-      </div>
       <div className="recipes-banner">
         Используйте только подтверждённые хим. элементы.
       </div>
@@ -129,7 +126,7 @@ const RecipesPage = () => {
               </div>
               {recipes.map((r) => (
                 <div key={r.id} className="recipes-table__row">
-                  <span className="recipes-table__name">{r.name || r.recipe || r.recipe_name || r.product || r.product_name || '—'}</span>
+                  <span className="recipes-table__name">{r.recipe || r.recipe_name || r.name || r.product || r.product_name || '—'}</span>
                   <span className="recipes-table__composition">{renderComposition(r)}</span>
                   <div className="recipes-table__actions">
                     <button type="button" className="btn btn--secondary btn--sm" onClick={() => setModalOpen(r)}>
@@ -168,19 +165,22 @@ const RecipesPage = () => {
   );
 };
 
-const TYPE_RAW = 'raw_material';
+const TYPE_RAW = 'raw';
 const TYPE_CHEMISTRY = 'chemistry';
 
 const RecipeModal = ({ recipe, onFetchRecipe, onSubmit, onClose, error }) => {
   const isEdit = !!recipe?.id;
   const [name, setName] = useState('');
+  const [product, setProduct] = useState('');
   const [components, setComponents] = useState([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const init = (r) => {
-      const recipeName = r?.name || r?.recipe || r?.recipe_name || r?.product || r?.product_name || '';
+      const recipeName = r?.recipe || r?.recipe_name || r?.name || '';
+      const productName = r?.product || r?.product_name || recipeName || '';
       setName(recipeName);
+      setProduct(productName);
       const comp = r?.components || r?.composition || [];
       setComponents(Array.isArray(comp) ? comp.map((c) => ({
         type: c.type || (c.material_id ? TYPE_RAW : TYPE_CHEMISTRY),
@@ -282,8 +282,8 @@ const RecipeModal = ({ recipe, onFetchRecipe, onSubmit, onClose, error }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
     const body = {
-      name,
-      product: name,
+      recipe: name,
+      product: product || name,
       components: components.map((c) => {
         const comp = { type: c.type, quantity: c.quantity, unit: c.unit || 'кг' };
         if (c.type === TYPE_RAW) comp.material_id = c.id;
@@ -305,12 +305,19 @@ const RecipeModal = ({ recipe, onFetchRecipe, onSubmit, onClose, error }) => {
           <Loading />
         ) : (
         <form onSubmit={handleSubmit}>
-          <label>Рецепт</label>
+          <label>Рецепт (название) *</label>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
-            placeholder="Название"
+            placeholder="Пленка 80 мкм"
+          />
+          <label>Продукт (название) *</label>
+          <input
+            value={product}
+            onChange={(e) => setProduct(e.target.value)}
+            required
+            placeholder="Пленка ПВД 80"
           />
           <label>Состав</label>
           <div className="recipe-modal__row">

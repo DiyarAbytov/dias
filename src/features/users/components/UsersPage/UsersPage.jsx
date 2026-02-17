@@ -1,34 +1,14 @@
 import React, { useState, useCallback } from 'react';
 import { useServerQuery } from '../../../../shared/lib';
-import { ServerList, FilterBar, ConfirmModal } from '../../../../shared/ui';
+import { ServerList, FilterBar, ConfirmModal, useToast } from '../../../../shared/ui';
 import { useAuth } from '../../../auth/model';
 import { createUser, updateUser, deleteUser, updateUserAccess } from '../../api/usersApi';
 import { createRole, updateRole, deleteRole } from '../../api/rolesApi';
+import { ACCESS_KEYS, ACCESS_LABELS } from '../../../../shared/config/constants';
 import './UsersPage.scss';
 
-const ACCESS_KEYS = [
-  'users', 'lines', 'materials', 'chemistry', 'recipes', 'orders',
-  'production', 'otk', 'warehouse', 'clients', 'sales', 'shipments', 'analytics'
-];
-
-const ACCESS_LABELS = {
-  users: 'Пользователи',
-  lines: 'Линии',
-  materials: 'Склад сырья',
-  chemistry: 'Химия',
-  recipes: 'Рецепты',
-  orders: 'Заказы',
-  production: 'Производство',
-  otk: 'ОТК',
-  warehouse: 'Склад ГП',
-  clients: 'Клиенты',
-  sales: 'Продажи',
-  shipments: 'Отгрузки',
-  analytics: 'Аналитика',
-};
-
 const USERS_FILTERS = (roleOptions) => [
-  { key: 'search', type: 'search', placeholder: 'Поиск по имени, email' },
+  { key: 'search', type: 'search', placeholder: 'Поиск по имени' },
   { key: 'role', type: 'select', placeholder: 'Роль', options: roleOptions },
   { key: 'is_active', type: 'select', placeholder: 'Статус', options: [
     { value: 'true', label: 'Активные' },
@@ -51,7 +31,8 @@ const cleanQuery = (q) => {
 };
 
 const UsersPage = () => {
-  const [activeTab, setActiveTab] = useState('users');
+  const toast = useToast();
+  const [activeTab, setActiveTab] = useState('roles');
   const [queryState, setQueryState] = useState({
     page: 1,
     page_size: 20,
@@ -99,6 +80,7 @@ const UsersPage = () => {
       setUserModal(null);
       refetch();
       refetchRoles();
+      toast.show('Успешно сохранено');
     } catch (err) {
       setSubmitError(err.response?.data?.error || err.response?.data?.details || 'Ошибка');
     }
@@ -115,6 +97,7 @@ const UsersPage = () => {
       setRoleModal(null);
       refetch();
       refetchRoles();
+      toast.show('Успешно сохранено');
     } catch (err) {
       setSubmitError(err.response?.data?.error || JSON.stringify(err.response?.data?.details || {}) || 'Ошибка');
     }
@@ -128,6 +111,7 @@ const UsersPage = () => {
       refetch();
       refetchRoles();
       refetchAuth();
+      toast.show('Успешно сохранено');
     } catch (err) {
       const data = err.response?.data;
       const msg = data?.error
@@ -151,6 +135,7 @@ const UsersPage = () => {
       setDeleteTarget(null);
       refetch();
       refetchRoles();
+      toast.show('Успешно удалено');
     } catch (err) {
       setSubmitError(err.response?.data?.error || 'Ошибка удаления');
     }
@@ -163,32 +148,79 @@ const UsersPage = () => {
         <div className="page__tabs">
           <button
             type="button"
-            className={`page__tab ${activeTab === 'users' ? 'page__tab--active' : ''}`}
-            onClick={() => setActiveTab('users')}
-          >
-            Пользователи
-          </button>
-          <button
-            type="button"
             className={`page__tab ${activeTab === 'roles' ? 'page__tab--active' : ''}`}
             onClick={() => setActiveTab('roles')}
           >
             Роли
           </button>
+          <button
+            type="button"
+            className={`page__tab ${activeTab === 'users' ? 'page__tab--active' : ''}`}
+            onClick={() => setActiveTab('users')}
+          >
+            Сотрудники
+          </button>
         </div>
         <div className="page__actions">
-          {activeTab === 'users' && (
-            <button type="button" className="btn btn--primary" onClick={() => setUserModal({})}>
-              + Создать пользователя
-            </button>
-          )}
           {activeTab === 'roles' && (
             <button type="button" className="btn btn--primary" onClick={() => setRoleModal({})}>
               + Создать роль
             </button>
           )}
+          {activeTab === 'users' && (
+            <button type="button" className="btn btn--primary" onClick={() => setUserModal({})}>
+              + Добавить сотрудника
+            </button>
+          )}
         </div>
       </div>
+
+      {activeTab === 'roles' && (
+        <ServerList
+          loading={rolesLoading}
+          error={rolesError}
+          items={roles}
+          meta={{ page: 1, total_pages: 1 }}
+          onRetry={refetchRoles}
+          renderTable={(listItems) => (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Название</th>
+                  <th>Описание</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {listItems.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.id}</td>
+                    <td>{r.name}</td>
+                    <td>{r.description || '—'}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn btn--sm"
+                        onClick={() => setRoleModal(r)}
+                      >
+                        Редактировать
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--sm btn--danger"
+                        onClick={() => setDeleteTarget({ type: 'role', id: r.id, name: r.name })}
+                      >
+                        Удалить
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        />
+      )}
 
       {activeTab === 'users' && (
         <ServerList
@@ -210,8 +242,8 @@ const UsersPage = () => {
                 <tr>
                   <th>ID</th>
                   <th>Имя</th>
-                  <th>Email</th>
                   <th>Роль</th>
+                  <th>Активен</th>
                   <th></th>
                 </tr>
               </thead>
@@ -220,8 +252,8 @@ const UsersPage = () => {
                   <tr key={u.id}>
                     <td>{u.id}</td>
                     <td>{u.name}</td>
-                    <td>{u.email}</td>
                     <td>{u.role_name ?? (roles.find((r) => r.id === u.role)?.name) ?? '—'}</td>
+                    <td>{u.is_active ? 'Да' : 'Нет'}</td>
                     <td>
                       <button
                         type="button"
@@ -235,7 +267,7 @@ const UsersPage = () => {
                         className="btn btn--sm"
                         onClick={() => setUserModal(u)}
                       >
-                        Изменить
+                        Редактировать
                       </button>
                       <button
                         type="button"
@@ -260,51 +292,6 @@ const UsersPage = () => {
                 <button onClick={() => handlePageChange(m.page + 1)}>Вперёд →</button>
               )}
             </>
-          )}
-        />
-      )}
-
-      {activeTab === 'roles' && (
-        <ServerList
-          loading={rolesLoading}
-          error={rolesError}
-          items={roles}
-          meta={{ page: 1, total_pages: 1 }}
-          onRetry={refetchRoles}
-          renderTable={(listItems) => (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Название</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {listItems.map((r) => (
-                  <tr key={r.id}>
-                    <td>{r.id}</td>
-                    <td>{r.name}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn btn--sm"
-                        onClick={() => setRoleModal(r)}
-                      >
-                        Изменить
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn--sm btn--danger"
-                        onClick={() => setDeleteTarget({ type: 'role', id: r.id, name: r.name })}
-                      >
-                        Удалить
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           )}
         />
       )}
@@ -334,6 +321,8 @@ const UsersPage = () => {
       {roleModal && (
         <RoleFormModal
           role={roleModal?.id ? roleModal : null}
+          accessKeys={ACCESS_KEYS}
+          accessLabels={ACCESS_LABELS}
           onSubmit={handleRoleSubmit}
           onClose={() => { setRoleModal(null); setSubmitError(''); }}
           error={submitError}
@@ -367,7 +356,8 @@ const AccessModal = ({ user, accessKeys, accessLabels, roles, onSave, onClose, e
         const { apiClient } = await import('../../../../shared/api');
         const res = await apiClient.get(`/roles/${user.role}/`);
         const acc = res.data?.accesses || [];
-        setSelected(new Set(acc.map((a) => a.access_key || a)));
+        const keys = acc.map((a) => a.access_key ?? a);
+        setSelected(new Set(keys));
       } catch {
         setSelected(new Set());
       } finally {
@@ -394,7 +384,7 @@ const AccessModal = ({ user, accessKeys, accessLabels, roles, onSave, onClose, e
         <h3>Доступы: {user?.name}</h3>
         {!hasRole ? (
           <>
-            <p>Назначьте роль пользователю в форме «Изменить», затем настройте доступы.</p>
+            <p>Назначьте роль пользователю в форме «Редактировать», затем настройте доступы.</p>
             <div className="modal__actions">
               <button type="button" className="btn btn--secondary" onClick={onClose}>Закрыть</button>
             </div>
@@ -443,41 +433,47 @@ const AccessModal = ({ user, accessKeys, accessLabels, roles, onSave, onClose, e
 
 const UserFormModal = ({ user, roles, onSubmit, onClose, error }) => {
   const [name, setName] = useState(user?.name ?? '');
-  const [email, setEmail] = useState(user?.email ?? '');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState(user?.role ? String(user.role) : '');
+  const [role, setRole] = useState(user?.role != null ? String(user.role) : '');
+  const [isActive, setIsActive] = useState(user?.is_active !== false);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>{user ? 'Редактировать пользователя' : 'Создать пользователя'}</h3>
+        <h3>{user ? 'Редактировать сотрудника' : 'Добавить сотрудника'}</h3>
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            const data = { name, email, role: role ? Number(role) : null, is_active: true };
+            const data = { name, role: role ? Number(role) : null, is_active: isActive };
             if (password) data.password = password;
+            if (!user && !password) return;
             onSubmit(data);
           }}
         >
-          <label>Имя</label>
+          <label>Имя *</label>
           <input value={name} onChange={(e) => setName(e.target.value)} required />
-          <label>Email</label>
+          <label>Пароль {user ? '(оставьте пустым, чтобы не менять)' : '*'}</label>
           <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            disabled={!!user}
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required={!user}
           />
-          <label>Пароль {user && '(оставьте пустым, чтобы не менять)'}</label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-          <label>Роль</label>
-          <select value={role} onChange={(e) => setRole(e.target.value)}>
+          <label>Роль *</label>
+          <select value={role} onChange={(e) => setRole(e.target.value)} required>
             <option value="">—</option>
             {roles.map((r) => (
               <option key={r.id} value={r.id}>{r.name}</option>
             ))}
           </select>
+          <label className="modal__checkbox-label">
+            <input
+              type="checkbox"
+              checked={isActive}
+              onChange={(e) => setIsActive(e.target.checked)}
+            />
+            Активен
+          </label>
           {error && <p className="modal__error">{error}</p>}
           <div className="modal__actions">
             <button type="button" className="btn btn--secondary" onClick={onClose}>Отмена</button>
@@ -489,21 +485,60 @@ const UserFormModal = ({ user, roles, onSubmit, onClose, error }) => {
   );
 };
 
-const RoleFormModal = ({ role, onSubmit, onClose, error }) => {
+const RoleFormModal = ({ role, accessKeys, accessLabels, onSubmit, onClose, error }) => {
   const [name, setName] = useState(role?.name ?? '');
+  const [description, setDescription] = useState(role?.description ?? '');
+  const [selectedAccess, setSelectedAccess] = useState(new Set());
+
+  React.useEffect(() => {
+    if (role?.accesses) {
+      const keys = role.accesses.map((a) => a.access_key ?? a);
+      setSelectedAccess(new Set(keys));
+    } else if (role?.id) {
+      setSelectedAccess(new Set());
+    }
+  }, [role?.id, role?.accesses]);
+
+  const toggleAccess = (key) => {
+    setSelectedAccess((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
         <h3>{role ? 'Редактировать роль' : 'Создать роль'}</h3>
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            onSubmit({ name });
+            const data = { name, description: description || undefined };
+            if (!role || selectedAccess.size > 0) {
+              data.access_keys = Array.from(selectedAccess);
+            }
+            onSubmit(data);
           }}
         >
-          <label>Название</label>
+          <label>Название *</label>
           <input value={name} onChange={(e) => setName(e.target.value)} required />
+          <label>Описание</label>
+          <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Описание роли" />
+          <label className="modal__access-label">Доступы * {!role && '(обязательно при создании)'}</label>
+          <div className="access-keys">
+            {accessKeys.map((key) => (
+              <label key={key} className="access-keys__item">
+                <input
+                  type="checkbox"
+                  checked={selectedAccess.has(key)}
+                  onChange={() => toggleAccess(key)}
+                />
+                {accessLabels[key] || key}
+              </label>
+            ))}
+          </div>
           {error && <p className="modal__error">{error}</p>}
           <div className="modal__actions">
             <button type="button" className="btn btn--secondary" onClick={onClose}>Отмена</button>

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '../../../../features/auth';
-import { Loading, EmptyState, ErrorState, FilterBar } from '../../../../shared/ui';
+import { Loading, EmptyState, ErrorState, FilterBar, useToast } from '../../../../shared/ui';
 import { useServerQuery } from '../../../../shared/lib';
 import { getBatchesAwaitingOtk, getOtkHistory, acceptBatch } from '../../api';
 import './OTKPage.scss';
@@ -79,6 +78,7 @@ const Pagination = ({ meta, onChange }) => {
 
 const OTKPage = () => {
   const { user } = useAuth();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState('awaiting');
   const [acceptModalBatch, setAcceptModalBatch] = useState(null);
   const [submitError, setSubmitError] = useState('');
@@ -139,6 +139,7 @@ const OTKPage = () => {
       });
       setAcceptModalBatch(null);
       refetchAll();
+      toast.show('Результат проверки сохранён');
     } catch (err) {
       setSubmitError(errorToMessage(err));
     }
@@ -160,11 +161,6 @@ const OTKPage = () => {
         ))}
       </div>
 
-      <div className="otk-nav">
-        <Link to="/production" className="otk-nav__link">Производство</Link>
-        <span className="otk-nav__sep">→</span>
-        <Link to="/warehouse" className="otk-nav__link">Склад ГП</Link>
-      </div>
 
       <div className="otk-tabs">
         <button

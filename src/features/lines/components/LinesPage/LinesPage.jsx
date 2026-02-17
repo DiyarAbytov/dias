@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useServerQuery } from '../../../../shared/lib';
-import { Loading, EmptyState, ErrorState, ConfirmModal } from '../../../../shared/ui';
+import { Loading, EmptyState, ErrorState, ConfirmModal, useToast } from '../../../../shared/ui';
 import {
   createLine,
   updateLine,
@@ -12,6 +12,7 @@ import { apiClient } from '../../../../shared/api';
 import './LinesPage.scss';
 
 const LinesPage = () => {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState('line');
   const [queryState, setQueryState] = useState({
     page: 1,
@@ -105,6 +106,7 @@ const LinesPage = () => {
       }
       setLineModal(null);
       refetch();
+      toast.show('Успешно сохранено');
     } catch (err) {
       setSubmitError(err.response?.data?.error || 'Ошибка');
     }
@@ -117,12 +119,17 @@ const LinesPage = () => {
       await deleteLine(deleteTarget.id);
       setDeleteTarget(null);
       refetch();
+      toast.show('Успешно удалено');
     } catch (err) {
       setSubmitError(err.response?.data?.error || 'Ошибка удаления');
     }
   };
 
-  const handleOpenClose = async (lineId, isOpen) => {
+  const [openCloseTarget, setOpenCloseTarget] = useState(null);
+
+  const handleOpenCloseConfirm = async () => {
+    if (!openCloseTarget) return;
+    const { lineId, isOpen } = openCloseTarget;
     setSubmitError('');
     try {
       if (isOpen) {
@@ -130,6 +137,7 @@ const LinesPage = () => {
       } else {
         await openShift(lineId);
       }
+      setOpenCloseTarget(null);
       setLinesWithStatus((prev) =>
         prev.map((l) =>
           l.id === lineId
@@ -145,17 +153,10 @@ const LinesPage = () => {
             : l
         )
       );
+      toast.show('Успешно');
     } catch (err) {
       setSubmitError(err.response?.data?.error || 'Ошибка');
     }
-  };
-
-  const cleanQuery = (q) => {
-    const copy = { ...q };
-    Object.keys(copy).forEach((k) => {
-      if (copy[k] === '' || copy[k] == null) delete copy[k];
-    });
-    return copy;
   };
 
   const formatDateTime = (dateStr, timeStr) => {
@@ -249,7 +250,9 @@ const LinesPage = () => {
               )}
               {meta && meta.total_pages > 1 && (
                 <div className="lines-card__pagination">
-                  Страница {meta.page} из {meta.total_pages}
+                  <button type="button" className="btn btn--sm" onClick={() => handlePageChange(meta.page - 1)} disabled={meta.page <= 1}>←</button>
+                  <span>Страница {meta.page} из {meta.total_pages}</span>
+                  <button type="button" className="btn btn--sm" onClick={() => handlePageChange(meta.page + 1)} disabled={meta.page >= meta.total_pages}>→</button>
                 </div>
               )}
             </>
@@ -297,17 +300,17 @@ const LinesPage = () => {
                             <button
                               type="button"
                               className="btn btn--secondary btn--sm"
-                              onClick={() => handleOpenClose(l.id, true)}
+                              onClick={() => setOpenCloseTarget({ lineId: l.id, isOpen: true })}
                             >
-                              Закрыть
+                              Закрыть смену
                             </button>
                           ) : (
                             <button
                               type="button"
                               className="btn btn--open btn--sm"
-                              onClick={() => handleOpenClose(l.id, false)}
+                              onClick={() => setOpenCloseTarget({ lineId: l.id, isOpen: false })}
                             >
-                              Открыть
+                              Открыть смену
                             </button>
                           )}
                         </div>
@@ -388,6 +391,15 @@ const LinesPage = () => {
         confirmText="Удалить"
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      <ConfirmModal
+        open={!!openCloseTarget}
+        title={openCloseTarget?.isOpen ? 'Закрыть смену?' : 'Открыть смену?'}
+        message={openCloseTarget ? (openCloseTarget.isOpen ? 'Линия будет закрыта. Выпуск запрещён.' : 'Линия будет открыта. Выпуск разрешён.') : ''}
+        confirmText={openCloseTarget?.isOpen ? 'Закрыть' : 'Открыть'}
+        onConfirm={handleOpenCloseConfirm}
+        onCancel={() => setOpenCloseTarget(null)}
       />
     </div>
   );

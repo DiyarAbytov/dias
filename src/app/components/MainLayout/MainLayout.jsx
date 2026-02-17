@@ -1,23 +1,32 @@
 import React from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../../features/auth';
+import { STAGE2_TABS_ENABLED, ACCESS_LABELS } from '../../../shared/config/constants';
 import './MainLayout.scss';
 
-const NAV_ITEMS = [
-  { path: '/analytics', label: 'Аналитика', accessKey: 'analytics' },
-  { path: '/users', label: 'Пользователи', accessKey: 'users' },
-  { path: '/lines', label: 'Линии', accessKey: 'lines' },
-  { path: '/materials', label: 'Склад сырья', accessKey: 'materials' },
-  { path: '/chemistry', label: 'Химия', accessKey: 'chemistry' },
-  { path: '/recipes', label: 'Рецепты', accessKey: 'recipes' },
-  { path: '/orders', label: 'Заказы', accessKey: 'orders' },
-  { path: '/production', label: 'Производство', accessKey: 'production' },
-  { path: '/otk', label: 'ОТК', accessKey: 'otk' },
-  { path: '/warehouse', label: 'Склад ГП', accessKey: 'warehouse' },
-  { path: '/clients', label: 'Клиенты', accessKey: 'clients' },
-  { path: '/sales', label: 'Продажи', accessKey: 'sales' },
-  { path: '/shipments', label: 'Отгрузки', accessKey: 'shipments' },
+const MVP_NAV = [
+  { path: '/users', accessKey: 'users' },
+  { path: '/lines', accessKey: 'lines' },
+  { path: '/materials', accessKey: 'materials' },
+  { path: '/chemistry', accessKey: 'chemistry' },
+  { path: '/recipes', accessKey: 'recipes' },
+  { path: '/orders', accessKey: 'orders' },
+  { path: '/production', accessKey: 'production' },
+  { path: '/otk', accessKey: 'otk' },
+  { path: '/warehouse', accessKey: 'warehouse' },
+  { path: '/analytics', accessKey: 'analytics' },
 ];
+
+const STAGE2_NAV = [
+  { path: '/clients', accessKey: 'clients' },
+  { path: '/sales', accessKey: 'sales' },
+  { path: '/shipments', accessKey: 'shipments' },
+];
+
+const NAV_ITEMS = [
+  ...MVP_NAV,
+  ...(STAGE2_TABS_ENABLED ? STAGE2_NAV : []),
+].map((item) => ({ ...item, label: ACCESS_LABELS[item.accessKey] || item.accessKey }));
 
 const MainLayout = () => {
   const { user, logout } = useAuth();

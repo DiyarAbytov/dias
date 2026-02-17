@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { useServerQuery } from '../../../../shared/lib';
-import { Loading, EmptyState, ErrorState, ConfirmModal } from '../../../../shared/ui';
+import { Loading, EmptyState, ErrorState, ConfirmModal, useToast } from '../../../../shared/ui';
 import { createOrder, updateOrder, deleteOrder, getOrder } from '../../api/ordersApi';
+import { getRecipeAvailability } from '../../../recipes/api/recipesApi';
 import { apiClient } from '../../../../shared/api';
 import './OrdersPage.scss';
 
@@ -13,6 +13,7 @@ const STATUSES = [
 ];
 
 const OrdersPage = () => {
+  const toast = useToast();
   const [statusFilter, setStatusFilter] = useState('');
   const [query, setQuery] = useState({ page: 1, page_size: 50 });
   const [modalOpen, setModalOpen] = useState(null);
@@ -58,6 +59,7 @@ const OrdersPage = () => {
       }
       setModalOpen(null);
       refetch();
+      toast.show('Успешно сохранено');
     } catch (err) {
       setSubmitError(err.response?.data?.error || err.response?.data?.details || 'Ошибка');
     }
@@ -70,9 +72,15 @@ const OrdersPage = () => {
       await deleteOrder(deleteTarget.id);
       setDeleteTarget(null);
       refetch();
+      toast.show('Успешно удалено');
     } catch (err) {
       setSubmitError(err.response?.data?.error || 'Ошибка удаления');
     }
+  };
+
+  const canDelete = (o) => {
+    const s = String(o?.status || '').toLowerCase();
+    return s !== 'in_progress' && s !== 'в работе';
   };
 
   const statusLabel = (s) => {
@@ -114,11 +122,6 @@ const OrdersPage = () => {
         ))}
       </div>
 
-      <div className="orders-nav">
-        <Link to="/recipes" className="orders-nav__link">Рецепты</Link>
-        <span className="orders-nav__sep">→</span>
-        <span className="orders-nav__current">Производство</span>
-      </div>
 
       {loading && <Loading />}
       {error && error.status !== 404 && <ErrorState error={error} onRetry={refetch} />}
@@ -156,7 +159,9 @@ const OrdersPage = () => {
                     <span>{o.quantity ?? o.produced ?? o.released ?? '—'}</span>
                     <div className="orders-table__actions">
                       <button type="button" className="btn btn--secondary btn--sm" onClick={() => setModalOpen(o)}>Редактировать</button>
-                      <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ id: o.id, name: productName(o) })}>Удалить</button>
+                      {canDelete(o) && (
+                        <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ id: o.id, name: productName(o) })}>Удалить</button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -194,7 +199,9 @@ const OrdersPage = () => {
                     <span>{formatDate(o.date || o.created_at)}</span>
                     <div className="orders-table__actions">
                       <button type="button" className="btn btn--secondary btn--sm" onClick={() => setModalOpen(o)}>Редактировать</button>
-                      <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ id: o.id, name: productName(o) })}>Удалить</button>
+                      {canDelete(o) && (
+                        <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ id: o.id, name: productName(o) })}>Удалить</button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -234,6 +241,7 @@ const OrderModal = ({ order, onFetchOrder, lines, recipes, onSubmit, onClose, er
   const [lineId, setLineId] = useState('');
   const [quantity, setQuantity] = useState('');
   const [loading, setLoading] = useState(false);
+  const [availability, setAvailability] = useState(null);
 
   useEffect(() => {
     const init = (o) => {
@@ -251,6 +259,16 @@ const OrderModal = ({ order, onFetchOrder, lines, recipes, onSubmit, onClose, er
       init(order || {});
     }
   }, [order?.id, onFetchOrder]);
+
+  useEffect(() => {
+    if (!recipeId) {
+      setAvailability(null);
+      return;
+    }
+    getRecipeAvailability(Number(recipeId))
+      .then((res) => setAvailability(res.data))
+      .catch(() => setAvailability(null));
+  }, [recipeId]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -276,12 +294,19 @@ const OrderModal = ({ order, onFetchOrder, lines, recipes, onSubmit, onClose, er
             <select value={recipeId} onChange={(e) => setRecipeId(e.target.value)} required>
               <option value="">— Выберите —</option>
               {recipes.map((r) => (
-                <option key={r.id} value={r.id}>{r.name || r.recipe_name || r.product || r.id}</option>
+                <option key={r.id} value={r.id}>{r.recipe || r.recipe_name || r.product || r.name || r.id}</option>
               ))}
             </select>
             <div className="orders-modal-banner">
               Доступны только подтверждённые рецепты.
             </div>
+            {availability && !availability.available && availability.missing?.length > 0 && (
+              <div className="orders-modal-warning">
+                Риск нехватки: {availability.missing.map((m) =>
+                  `${m.component}: требуется ${m.required}, доступно ${m.available ?? 0} ${m.unit || ''}`
+                ).join('; ')}
+              </div>
+            )}
             <label>Линия</label>
             <select value={lineId} onChange={(e) => setLineId(e.target.value)} required>
               <option value="">— Выберите —</option>

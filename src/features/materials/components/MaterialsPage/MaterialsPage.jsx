@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { useServerQuery } from '../../../../shared/lib';
-import { Loading, EmptyState, ErrorState, ConfirmModal } from '../../../../shared/ui';
+import { Loading, EmptyState, ErrorState, ConfirmModal, useToast } from '../../../../shared/ui';
 import {
   createRawMaterial,
   updateRawMaterial,
   deleteRawMaterial,
   createIncoming,
+  updateIncoming,
+  deleteIncoming,
 } from '../../api/materialsApi';
 import { apiClient } from '../../../../shared/api';
 import './MaterialsPage.scss';
@@ -19,11 +20,12 @@ const UNITS = [
 ];
 
 const MaterialsPage = () => {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState('directory');
   const [dirQuery, setDirQuery] = useState({ page: 1, page_size: 20, search: '' });
   const [incomingQuery, setIncomingQuery] = useState({ page: 1, page_size: 20, search: '' });
   const [dirModal, setDirModal] = useState(null);
-  const [incomingModal, setIncomingModal] = useState(false);
+  const [incomingModal, setIncomingModal] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [submitError, setSubmitError] = useState('');
 
@@ -65,6 +67,7 @@ const MaterialsPage = () => {
       }
       setDirModal(null);
       refetchDir();
+      toast.show('Успешно сохранено');
     } catch (err) {
       setSubmitError(err.response?.data?.error || 'Ошибка');
     }
@@ -73,22 +76,33 @@ const MaterialsPage = () => {
   const handleIncomingSubmit = async (data) => {
     setSubmitError('');
     try {
-      await createIncoming(data);
-      setIncomingModal(false);
+      if (incomingModal?.id) {
+        await updateIncoming(incomingModal.id, data);
+      } else {
+        await createIncoming(data);
+      }
+      setIncomingModal(null);
       refetchIncoming();
       refetchDir();
+      toast.show('Успешно сохранено');
     } catch (err) {
       setSubmitError(err.response?.data?.error || 'Ошибка');
     }
   };
 
-  const handleDeleteDir = async () => {
+  const handleDelete = async () => {
     if (!deleteTarget) return;
     setSubmitError('');
     try {
-      await deleteRawMaterial(deleteTarget.id);
+      if (deleteTarget.type === 'dir') {
+        await deleteRawMaterial(deleteTarget.id);
+        refetchDir();
+      } else {
+        await deleteIncoming(deleteTarget.id);
+        refetchIncoming();
+      }
       setDeleteTarget(null);
-      refetchDir();
+      toast.show('Успешно удалено');
     } catch (err) {
       setSubmitError(err.response?.data?.error || 'Ошибка удаления');
     }
@@ -99,11 +113,6 @@ const MaterialsPage = () => {
   return (
     <div className="page page--materials">
       <h1 className="page__title">Склад сырья</h1>
-      <div className="materials-nav">
-        <Link to="/chemistry" className="materials-nav__link">Хим. элементы</Link>
-        <span className="materials-nav__sep">•</span>
-        <Link to="/recipes" className="materials-nav__link">Рецепты</Link>
-      </div>
       <div className="materials-tabs">
         <button
           type="button"
@@ -165,7 +174,7 @@ const MaterialsPage = () => {
                       <button type="button" className="btn btn--secondary btn--sm" onClick={() => setDirModal(r)}>
                         Редактировать
                       </button>
-                      <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ id: r.id, name: r.name })}>
+                      <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ type: 'dir', id: r.id, name: r.name })}>
                         Удалить
                       </button>
                     </div>
@@ -189,8 +198,8 @@ const MaterialsPage = () => {
                 value={incomingQuery.search || ''}
                 onChange={(e) => setIncomingQuery((p) => ({ ...p, search: e.target.value, page: 1 }))}
               />
-              <button type="button" className="btn btn--primary" onClick={() => setIncomingModal(true)}>
-                Оформить
+              <button type="button" className="btn btn--primary" onClick={() => setIncomingModal({})}>
+                Добавить
               </button>
             </div>
           </div>
@@ -208,6 +217,7 @@ const MaterialsPage = () => {
                   <span className="materials-table__th">ПАРТИЯ</span>
                   <span className="materials-table__th">ПОСТАВЩИК</span>
                   <span className="materials-table__th">КОММЕНТАРИЙ</span>
+                  <span className="materials-table__th materials-table__th--actions">ДЕЙСТВИЯ</span>
                 </div>
                 {incomingList.map((i) => (
                   <div key={i.id} className="materials-table__row">
@@ -217,6 +227,14 @@ const MaterialsPage = () => {
                     <span>{i.batch || '—'}</span>
                     <span>{i.supplier || '—'}</span>
                     <span>{i.comment || '—'}</span>
+                    <div className="materials-table__actions">
+                      <button type="button" className="btn btn--secondary btn--sm" onClick={() => setIncomingModal(i)}>
+                        Редактировать
+                      </button>
+                      <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ type: 'incoming', id: i.id, name: `${i.material_name || i.material} ${formatDate(i.date)}` })}>
+                        Удалить
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -283,7 +301,7 @@ const MaterialsPage = () => {
         title="Удалить?"
         message={deleteTarget ? `Удалить "${deleteTarget.name}"?` : ''}
         confirmText="Удалить"
-        onConfirm={handleDeleteDir}
+        onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
     </div>
@@ -321,28 +339,30 @@ const DirModal = ({ item, units, onSubmit, onClose, error }) => {
   );
 };
 
-const IncomingModal = ({ rawMaterials, onSubmit, onClose, error }) => {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [material, setMaterial] = useState('');
-  const [quantity, setQuantity] = useState(0);
-  const [batch, setBatch] = useState('');
-  const [supplier, setSupplier] = useState('');
-  const [comment, setComment] = useState('');
+const IncomingModal = ({ incoming, rawMaterials, onSubmit, onClose, error }) => {
+  const [date, setDate] = useState(incoming?.date ?? new Date().toISOString().slice(0, 10));
+  const [material, setMaterial] = useState(incoming?.material != null ? String(incoming.material) : '');
+  const [quantity, setQuantity] = useState(incoming?.quantity ?? '');
+  const [batch, setBatch] = useState(incoming?.batch ?? '');
+  const [supplier, setSupplier] = useState(incoming?.supplier ?? '');
+  const [comment, setComment] = useState(incoming?.comment ?? '');
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
         <div className="modal__head">
-          <h3>Приход</h3>
+          <h3>{incoming?.id ? 'Редактировать приход' : 'Добавить приход'}</h3>
           <button type="button" className="modal__close" onClick={onClose} aria-label="Закрыть">×</button>
         </div>
         <form
           onSubmit={(e) => {
             e.preventDefault();
+            const qty = Number(quantity);
+            if (qty <= 0) return;
             onSubmit({
               date,
               material: Number(material),
-              quantity: Number(quantity),
+              quantity: qty,
               batch: batch || undefined,
               supplier: supplier || undefined,
               comment: comment || undefined,
@@ -368,7 +388,7 @@ const IncomingModal = ({ rawMaterials, onSubmit, onClose, error }) => {
           <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={3} />
           {error && <p className="modal__error">{error}</p>}
           <div className="modal__actions">
-            <button type="submit" className="btn btn--primary">Оформить</button>
+            <button type="submit" className="btn btn--primary">{incoming?.id ? 'Сохранить' : 'Добавить'}</button>
             <button type="button" className="btn btn--secondary" onClick={onClose}>Отмена</button>
           </div>
         </form>

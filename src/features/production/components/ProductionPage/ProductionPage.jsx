@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { EmptyState, FilterBar, Loading, ErrorState } from '../../../../shared/ui';
+import { EmptyState, FilterBar, Loading, ErrorState, ConfirmModal, useToast } from '../../../../shared/ui';
 import { useServerQuery } from '../../../../shared/lib';
 import { getProductionBatches, getProductionOrders, releaseOrder } from '../../api/productionApi';
 import './ProductionPage.scss';
@@ -54,7 +53,9 @@ const Pagination = ({ meta, onChange }) => {
 };
 
 const ProductionPage = () => {
+  const toast = useToast();
   const [releaseModalOpen, setReleaseModalOpen] = useState(false);
+  const [releaseConfirm, setReleaseConfirm] = useState(null);
   const [submitError, setSubmitError] = useState('');
   const [ordersQuery, setOrdersQuery] = useState({
     page: 1,
@@ -117,16 +118,16 @@ const ProductionPage = () => {
     refetchBatches();
   };
 
+  const availableForRelease = orders.filter((o) => {
+    const s = String(o?.status || '').toLowerCase();
+    return s === 'created' || s === 'создан';
+  });
+
   return (
     <div className="page page--production">
       <h1 className="page__title">Производство</h1>
       <div className="production-banner">
         При выпуске происходит списание со складов. После выпуска подтвердите — партия передаётся в ОТК.
-      </div>
-      <div className="production-nav">
-        <Link to="/orders" className="production-nav__link">Заказы</Link>
-        <span className="production-nav__sep">→</span>
-        <Link to="/otk" className="production-nav__link">ОТК</Link>
       </div>
 
       <div className="production-card">
@@ -164,9 +165,8 @@ const ProductionPage = () => {
               <div className="production-table__header">
                 <span className="production-table__th">ПРОДУКТ</span>
                 <span className="production-table__th">ЛИНИЯ</span>
-                <span className="production-table__th">ВЫПУЩЕНО</span>
+                <span className="production-table__th">КОЛ-ВО</span>
                 <span className="production-table__th">СТАТУС</span>
-                <span className="production-table__th production-table__th--actions">ДЕЙСТВИЯ</span>
               </div>
               {orders.map((o) => (
                 <div key={o.id} className="production-table__row">
@@ -174,10 +174,6 @@ const ProductionPage = () => {
                   <span>{lineName(o)}</span>
                   <span>{o.quantity ?? o.released ?? o.produced ?? '—'}</span>
                   <span>{statusLabel(o.status)}</span>
-                  <div className="production-table__actions">
-                    <button type="button" className="btn btn--secondary btn--sm">Редактировать</button>
-                    <button type="button" className="btn btn--danger btn--sm">Удалить</button>
-                  </div>
                 </div>
               ))}
             </div>
@@ -237,21 +233,33 @@ const ProductionPage = () => {
 
       {releaseModalOpen && (
         <ReleaseModal
-          orders={orders}
-          onSubmit={async (data) => {
-            setSubmitError('');
-            try {
-              await releaseOrder(data.order_id, { quantity: data.quantity });
-              setReleaseModalOpen(false);
-              refetch();
-            } catch (err) {
-              setSubmitError(errorToMessage(err));
-            }
-          }}
-          onClose={() => { setReleaseModalOpen(false); setSubmitError(''); }}
+          orders={availableForRelease}
+          onSubmit={(data) => { setReleaseConfirm(data); setReleaseModalOpen(false); }}
+          onClose={() => { setReleaseModalOpen(false); setReleaseConfirm(null); setSubmitError(''); }}
           error={submitError}
         />
       )}
+
+      <ConfirmModal
+        open={!!releaseConfirm}
+        title="Выпустить партию?"
+        message={releaseConfirm ? `Выпустить ${releaseConfirm.quantity} шт? Сырьё будет списано.` : ''}
+        confirmText="Выпустить"
+        onConfirm={async () => {
+          if (!releaseConfirm) return;
+          setSubmitError('');
+          try {
+            await releaseOrder(releaseConfirm.orderId, { quantity: releaseConfirm.quantity });
+            setReleaseModalOpen(false);
+            setReleaseConfirm(null);
+            refetch();
+            toast.show('Успешно выпущено');
+          } catch (err) {
+            setSubmitError(errorToMessage(err));
+          }
+        }}
+        onCancel={() => setReleaseConfirm(null)}
+      />
     </div>
   );
 };
@@ -282,7 +290,7 @@ const ReleaseModal = ({ orders, onSubmit, onClose, error }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!orderId || !quantity) return;
-    onSubmit({ order_id: Number(orderId), quantity: Number(quantity) });
+    onSubmit({ orderId: Number(orderId), quantity: Number(quantity) });
   };
 
   return (

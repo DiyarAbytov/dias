@@ -17,7 +17,8 @@ export const AuthProvider = ({ children }) => {
     try {
       const data = await getMe();
       const u = data.user || data;
-      setUser(u);
+      const accesses = data.accesses ?? u?.accesses ?? [];
+      setUser({ ...u, accesses });
     } catch {
       setUser(null);
       localStorage.removeItem('token');
@@ -33,8 +34,8 @@ export const AuthProvider = ({ children }) => {
   const login = useCallback(async (name, password) => {
     const data = await loginApi(name, password);
     localStorage.setItem('token', data.token);
-    setUser(data.user);
-  }, []);
+    await loadUser();
+  }, [loadUser]);
 
   const logout = useCallback(async () => {
     await logoutApi();

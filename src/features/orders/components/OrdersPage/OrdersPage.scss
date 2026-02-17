@@ -197,6 +197,16 @@
   font-size: 0.9rem;
 }
 
+.orders-modal-warning {
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.75rem;
+  background: rgba(210, 153, 34, 0.15);
+  border-left: 4px solid var(--warning);
+  border-radius: 6px;
+  color: var(--warning);
+  font-size: 0.9rem;
+}
+
 .btn {
   padding: 0.5rem 1rem;
   border-radius: 8px;

@@ -8,47 +8,55 @@ const AnalyticsPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const f = async () => {
-      try {
-        const res = await apiClient.get('analytics/summary/');
-        setData(res.data);
-      } catch (err) {
-        setError(err.response?.data || { error: err.message });
-      } finally {
-        setLoading(false);
-      }
-    };
-    f();
-  }, []);
+  const load = () => {
+    setLoading(true);
+    setError(null);
+    apiClient.get('analytics/summary/')
+      .then((res) => setData(res.data))
+      .catch((err) => setError(err.response?.data || { error: err.message }))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => load(), []);
 
   if (loading) return <Loading />;
-  if (error) return <ErrorState error={error} onRetry={() => window.location.reload()} />;
+  if (error) return <ErrorState error={error} onRetry={load} />;
+
+  const sales = data?.sales;
+  const shipments = data?.shipments;
+  const warehouse = data?.warehouse;
 
   return (
     <div className="page page--analytics">
       <h1 className="page__title">Аналитика</h1>
       <div className="analytics-cards">
-        {data?.sales != null && (
+        {sales != null && (
           <div className="analytics-card">
             <div className="analytics-card__label">Продажи</div>
-            <pre className="analytics-card__value">{JSON.stringify(data.sales, null, 2)}</pre>
+            <div className="analytics-card__value">
+              Объём: {Number(sales.total_quantity ?? 0).toLocaleString('ru-RU')}
+            </div>
           </div>
         )}
-        {data?.shipments != null && (
+        {shipments != null && (
           <div className="analytics-card">
             <div className="analytics-card__label">Отгрузки</div>
-            <pre className="analytics-card__value">{JSON.stringify(data.shipments, null, 2)}</pre>
+            <div className="analytics-card__value">
+              Объём: {Number(shipments.total_quantity ?? 0).toLocaleString('ru-RU')}
+            </div>
           </div>
         )}
-        {data?.warehouse != null && (
+        {warehouse != null && (
           <div className="analytics-card">
             <div className="analytics-card__label">Склад ГП</div>
-            <pre className="analytics-card__value">{JSON.stringify(data.warehouse, null, 2)}</pre>
+            <div className="analytics-card__value">
+              <div>Доступно: {Number(warehouse.available ?? 0).toLocaleString('ru-RU')}</div>
+              <div>В резерве: {Number(warehouse.reserved ?? 0).toLocaleString('ru-RU')}</div>
+            </div>
           </div>
         )}
-        {!data?.sales && !data?.shipments && !data?.warehouse && (
-          <p>Нет данных для отображения.</p>
+        {!sales && !shipments && !warehouse && (
+          <p className="analytics-empty">Нет данных для отображения.</p>
         )}
       </div>
     </div>

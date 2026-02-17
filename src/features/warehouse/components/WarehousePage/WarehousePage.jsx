@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useServerQuery } from '../../../../shared/lib';
-import { EmptyState, ErrorState, Loading } from '../../../../shared/ui';
+import { EmptyState, ErrorState, Loading, useToast } from '../../../../shared/ui';
 import { apiClient } from '../../../../shared/api';
 
 const statusLabel = (status) => {
@@ -12,6 +12,7 @@ const statusLabel = (status) => {
 };
 
 const WarehousePage = () => {
+  const toast = useToast();
   const [queryState, setQueryState] = useState({ page: 1, page_size: 20, status: '' });
   const [reserveTarget, setReserveTarget] = useState(null);
   const [submitError, setSubmitError] = useState('');
@@ -20,15 +21,17 @@ const WarehousePage = () => {
 
   const rows = useMemo(() => items || [], [items]);
 
-  const handleReserve = async (batchId, quantity) => {
+  const handleReserve = async (batchId, quantity, saleId) => {
     setSubmitError('');
     try {
       await apiClient.post('warehouse/batches/reserve/', {
         batchId: Number(batchId),
         quantity: Number(quantity),
+        ...(saleId ? { saleId: Number(saleId) } : {}),
       });
       setReserveTarget(null);
       refetch();
+      toast.show('Успешно зарезервировано');
     } catch (err) {
       const data = err.response?.data;
       const msg = data?.code ? `[${data.code}] ${data.error || 'Ошибка'}` : (data?.error || 'Ошибка');
@@ -108,6 +111,7 @@ const WarehousePage = () => {
 
 const ReserveModal = ({ batch, onClose, onSubmit, error }) => {
   const [quantity, setQuantity] = useState(batch?.quantity ? String(batch.quantity) : '1');
+  const [saleId, setSaleId] = useState('');
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -119,12 +123,12 @@ const ReserveModal = ({ batch, onClose, onSubmit, error }) => {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            onSubmit(batch.id, Number(quantity));
+            onSubmit(batch.id, Number(quantity), saleId ? Number(saleId) : undefined);
           }}
         >
           <label>Продукт</label>
           <input value={batch.product} readOnly />
-          <label>Количество</label>
+          <label>Количество *</label>
           <input
             type="number"
             min="1"
@@ -132,6 +136,14 @@ const ReserveModal = ({ batch, onClose, onSubmit, error }) => {
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
             required
+          />
+          <label>ID продажи (опционально)</label>
+          <input
+            type="number"
+            min="1"
+            placeholder="—"
+            value={saleId}
+            onChange={(e) => setSaleId(e.target.value)}
           />
           {error && <p className="modal__error">{error}</p>}
           <div className="modal__actions">

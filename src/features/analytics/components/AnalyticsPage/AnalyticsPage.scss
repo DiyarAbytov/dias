@@ -20,8 +20,16 @@
 
   &__value {
     margin: 0;
-    font-size: 0.85rem;
-    overflow-x: auto;
-    color: var(--muted);
+    font-size: 1rem;
+    color: var(--text);
+
+    div + div {
+      margin-top: 0.25rem;
+    }
   }
+}
+
+.analytics-empty {
+  color: var(--muted);
+  margin: 1rem 0;
 }

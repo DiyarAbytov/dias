@@ -135,6 +135,16 @@
     grid-template-columns: 1fr 2fr 110px auto;
   }
 
+  &--elements &__header,
+  &--elements &__row {
+    grid-template-columns: 1fr 80px 2fr auto;
+  }
+
+  &--tasks &__header,
+  &--tasks &__row {
+    grid-template-columns: 1fr 1fr 80px 100px 100px auto;
+  }
+
   &--directory &__header,
   &--directory &__row {
     grid-template-columns: 1fr auto auto;
@@ -142,7 +152,7 @@
 
   &--balances &__header,
   &--balances &__row {
-    grid-template-columns: 1fr 2fr 1fr 110px;
+    grid-template-columns: 1fr 80px 100px 100px 1fr;
   }
 
   &__th--actions {
@@ -185,6 +195,11 @@
     justify-content: flex-end;
   }
 
+  &__composition {
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+
   &__badge {
     display: inline-block;
     padding: 0.35rem 0.65rem;
@@ -193,6 +208,21 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.03em;
+
+    &--green {
+      background: var(--success);
+      color: #fff;
+    }
+
+    &--orange {
+      background: var(--warning);
+      color: #fff;
+    }
+
+    &--blue {
+      background: var(--accent);
+      color: #fff;
+    }
 
     &--completed {
       background: var(--success);
@@ -329,6 +359,22 @@
     justify-content: flex-start;
     gap: 0.75rem;
     margin-top: 1.25rem;
+  }
+}
+
+.element-modal__row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+
+  select {
+    flex: 1;
+    min-width: 140px;
+  }
+
+  input {
+    width: 100px;
   }
 }
 
