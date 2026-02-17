@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useServerQuery } from '../../../../shared/lib';
 import { EmptyState, ErrorState, Loading, useToast } from '../../../../shared/ui';
 import { apiClient } from '../../../../shared/api';
+import './WarehousePage.scss';
 
 const statusLabel = (status) => {
   const s = String(status || '').toLowerCase();
@@ -41,46 +42,49 @@ const WarehousePage = () => {
 
   return (
     <div className="page page--warehouse">
-      <h1 className="page__title">Склад ГП</h1>
+      <div className="page__filters">
+        <select
+          value={queryState.status}
+          onChange={(e) => setQueryState((p) => ({ ...p, status: e.target.value, page: 1 }))}
+        >
+          <option value="">Все статусы</option>
+          <option value="available">Доступна</option>
+          <option value="reserved">В резерве</option>
+          <option value="shipped">Отгружена</option>
+        </select>
+      </div>
 
-      <div className="production-card">
-        <div className="production-card__head">
-          <h2 className="production-card__title">Партии</h2>
-          <select
-            value={queryState.status}
-            onChange={(e) => setQueryState((p) => ({ ...p, status: e.target.value, page: 1 }))}
-          >
-            <option value="">Все статусы</option>
-            <option value="available">Доступна</option>
-            <option value="reserved">В резерве</option>
-            <option value="shipped">Отгружена</option>
-          </select>
-        </div>
-
-        {loading && <Loading />}
-        {error && error.status !== 404 && <ErrorState error={error} onRetry={refetch} />}
-        {!loading && (!error || error.status === 404) && rows.length === 0 && (
-          <EmptyState title="Нет партий на складе ГП" />
-        )}
-        {!loading && (!error || error.status === 404) && rows.length > 0 && (
-          <div className="production-table production-table--batches">
-            <div className="production-table__header">
-              <span className="production-table__th">СТАТУС</span>
-              <span className="production-table__th">ПРОДУКТ</span>
-              <span className="production-table__th">КОЛ-ВО</span>
-              <span className="production-table__th">ПАРТИЯ</span>
-              <span className="production-table__th production-table__th--actions">ДЕЙСТВИЯ</span>
-            </div>
+      {loading && <Loading />}
+      {error && error.status !== 404 && <ErrorState error={error} onRetry={refetch} />}
+      {!loading && (!error || error.status === 404) && rows.length === 0 && (
+        <EmptyState title="Нет партий" />
+      )}
+      {!loading && (!error || error.status === 404) && rows.length > 0 && (
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Статус</th>
+              <th>Продукт</th>
+              <th>Кол-во</th>
+              <th>Партия</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
             {rows.map((b) => {
               const qty = b.quantity ?? b.available_quantity ?? 0;
               const canReserve = String(b.status || '').toLowerCase() === 'available';
               return (
-                <div key={b.id} className="production-table__row">
-                  <span>{statusLabel(b.status)}</span>
-                  <span>{b.product_name || b.product?.name || b.product || '—'}</span>
-                  <span>{qty}</span>
-                  <span>{b.batch || b.lot || `#${b.id}`}</span>
-                  <div className="production-table__actions">
+                <tr key={b.id}>
+                  <td>
+                    <span className={`badge badge--${String(b.status || '').toLowerCase()}`}>
+                      {statusLabel(b.status)}
+                    </span>
+                  </td>
+                  <td>{b.product_name || b.product?.name || b.product || '—'}</td>
+                  <td>{qty}</td>
+                  <td>{b.batch || b.lot || `#${b.id}`}</td>
+                  <td>
                     <button
                       type="button"
                       className="btn btn--secondary btn--sm"
@@ -89,13 +93,13 @@ const WarehousePage = () => {
                     >
                       Резерв
                     </button>
-                  </div>
-                </div>
+                  </td>
+                </tr>
               );
             })}
-          </div>
-        )}
-      </div>
+          </tbody>
+        </table>
+      )}
 
       {reserveTarget && (
         <ReserveModal
@@ -117,7 +121,7 @@ const ReserveModal = ({ batch, onClose, onSubmit, error }) => {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal__head">
-          <h3>Резерв партии</h3>
+          <h3>Резерв</h3>
           <button type="button" className="modal__close" onClick={onClose} aria-label="Закрыть">×</button>
         </div>
         <form
@@ -137,18 +141,18 @@ const ReserveModal = ({ batch, onClose, onSubmit, error }) => {
             onChange={(e) => setQuantity(e.target.value)}
             required
           />
-          <label>ID продажи (опционально)</label>
+          <label>ID продажи</label>
           <input
             type="number"
             min="1"
-            placeholder="—"
+            placeholder="Опционально"
             value={saleId}
             onChange={(e) => setSaleId(e.target.value)}
           />
           {error && <p className="modal__error">{error}</p>}
           <div className="modal__actions">
-            <button type="submit" className="btn btn--primary">Зарезервировать</button>
             <button type="button" className="btn btn--secondary" onClick={onClose}>Отмена</button>
+            <button type="submit" className="btn btn--primary">Зарезервировать</button>
           </div>
         </form>
       </div>

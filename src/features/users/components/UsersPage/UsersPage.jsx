@@ -144,7 +144,6 @@ const UsersPage = () => {
   return (
     <div className="page page--users">
       <div className="page__header">
-        <h1 className="page__title">Сотрудники</h1>
         <div className="page__tabs">
           <button
             type="button"

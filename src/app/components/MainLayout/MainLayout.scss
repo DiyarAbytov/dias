@@ -103,9 +103,16 @@
   background: var(--card);
   border-bottom: 1px solid var(--border);
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.main-layout__page-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
 }
 
 .main-layout__user {
@@ -141,7 +148,7 @@
 
 .main-layout__main {
   flex: 1;
-  padding: 2rem;
+  padding: 1.5rem 2rem;
   overflow: auto;
 
   @include mobile {

@@ -167,7 +167,6 @@ const LinesPage = () => {
 
   return (
     <div className="page page--lines">
-      <h1 className="page__title">Линии</h1>
       <div className="lines-tabs">
         <button
           type="button"

@@ -156,7 +156,6 @@ const ChemistryPage = () => {
 
   return (
     <div className="page page--chemistry">
-      <h1 className="page__title">Химия</h1>
       <div className="chemistry-tabs">
         <button
           type="button"

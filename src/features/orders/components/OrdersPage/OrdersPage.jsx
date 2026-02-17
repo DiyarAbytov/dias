@@ -106,8 +106,6 @@ const OrdersPage = () => {
 
   return (
     <div className="page page--orders">
-      <h1 className="page__title">Заказы</h1>
-
       <div className="orders-statuses">
         <span className="orders-statuses__label">Статусы:</span>
         {STATUSES.map((st) => (

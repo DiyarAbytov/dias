@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { useServerQuery } from '../../../../shared/lib';
-import { ConfirmModal, EmptyState, ErrorState, Loading } from '../../../../shared/ui';
+import { ConfirmModal, EmptyState, ErrorState, Loading, useToast } from '../../../../shared/ui';
 import { apiClient } from '../../../../shared/api';
+import './ClientsPage.scss';
 
 const ClientsPage = () => {
+  const toast = useToast();
   const [queryState, setQueryState] = useState({ page: 1, page_size: 20, search: '' });
   const [modalClient, setModalClient] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -24,6 +26,7 @@ const ClientsPage = () => {
       }
       setModalClient(null);
       refetch();
+      toast.show('Сохранено');
     } catch (err) {
       setSubmitError(err.response?.data?.error || 'Ошибка');
     }
@@ -36,9 +39,10 @@ const ClientsPage = () => {
       await apiClient.delete(`clients/${deleteTarget.id}/`);
       setDeleteTarget(null);
       refetch();
+      toast.show('Удалено');
     } catch (err) {
       const data = err.response?.data;
-      setSubmitError(data?.code ? `[${data.code}] ${data.error || 'Ошибка удаления'}` : (data?.error || 'Ошибка удаления'));
+      setSubmitError(data?.code ? `[${data.code}] ${data.error || 'Ошибка'}` : (data?.error || 'Ошибка'));
     }
   };
 
@@ -58,55 +62,52 @@ const ClientsPage = () => {
 
   return (
     <div className="page page--clients">
-      <h1 className="page__title">Клиенты</h1>
+      <div className="page__actions">
+        <input
+          type="text"
+          placeholder="Поиск..."
+          value={queryState.search}
+          onChange={(e) => setQueryState((p) => ({ ...p, search: e.target.value, page: 1 }))}
+        />
+        <button type="button" className="btn btn--primary" onClick={() => setModalClient({})}>
+          + Создать
+        </button>
+      </div>
 
-      <div className="orders-card">
-        <div className="orders-card__head">
-          <h2 className="orders-card__title">Список клиентов</h2>
-          <div className="orders-card__actions">
-            <input
-              type="text"
-              placeholder="Поиск..."
-              value={queryState.search}
-              onChange={(e) => setQueryState((p) => ({ ...p, search: e.target.value, page: 1 }))}
-            />
-            <button type="button" className="btn btn--primary" onClick={() => setModalClient({})}>
-              Создать
-            </button>
-          </div>
-        </div>
-
-        {loading && <Loading />}
-        {error && error.status !== 404 && <ErrorState error={error} onRetry={refetch} />}
-        {!loading && (!error || error.status === 404) && items.length === 0 && <EmptyState title="Нет клиентов" />}
-        {!loading && (!error || error.status === 404) && items.length > 0 && (
-          <div className="orders-table orders-table--main">
-            <div className="orders-table__header">
-              <span className="orders-table__th">ИМЯ</span>
-              <span className="orders-table__th">ТЕЛЕФОН</span>
-              <span className="orders-table__th orders-table__th--actions">ДЕЙСТВИЯ</span>
-            </div>
+      {loading && <Loading />}
+      {error && error.status !== 404 && <ErrorState error={error} onRetry={refetch} />}
+      {!loading && (!error || error.status === 404) && items.length === 0 && <EmptyState title="Нет клиентов" />}
+      {!loading && (!error || error.status === 404) && items.length > 0 && (
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Имя</th>
+              <th>Телефон</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
             {items.map((c) => (
-              <div key={c.id} className="orders-table__row">
-                <span>{c.name || c.title || `#${c.id}`}</span>
-                <span>{c.phone || c.phone_number || '—'}</span>
-                <div className="orders-table__actions">
-                  <button type="button" className="btn btn--secondary btn--sm" onClick={() => setModalClient(c)}>
-                    Редактировать
+              <tr key={c.id}>
+                <td>{c.name || c.title || `#${c.id}`}</td>
+                <td>{c.phone || c.phone_number || '—'}</td>
+                <td>
+                  <button type="button" className="btn btn--sm btn--secondary" onClick={() => setModalClient(c)}>
+                    Ред.
                   </button>
                   <button type="button" className="btn btn--sm" onClick={() => handleOpenHistory(c)}>
                     История
                   </button>
-                  <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ id: c.id, name: c.name || `#${c.id}` })}>
+                  <button type="button" className="btn btn--sm btn--danger" onClick={() => setDeleteTarget({ id: c.id, name: c.name || `#${c.id}` })}>
                     Удалить
                   </button>
-                </div>
-              </div>
+                </td>
+              </tr>
             ))}
-          </div>
-        )}
-        {submitError && <p className="modal__error">{submitError}</p>}
-      </div>
+          </tbody>
+        </table>
+      )}
+      {submitError && <p className="modal__error">{submitError}</p>}
 
       {modalClient !== null && (
         <ClientModal
@@ -146,7 +147,7 @@ const ClientModal = ({ client, onClose, onSubmit, error }) => {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal__head">
-          <h3>{client ? 'Редактировать клиента' : 'Создать клиента'}</h3>
+          <h3>{client ? 'Редактировать' : 'Создать'}</h3>
           <button type="button" className="modal__close" onClick={onClose} aria-label="Закрыть">×</button>
         </div>
         <form
@@ -158,14 +159,14 @@ const ClientModal = ({ client, onClose, onSubmit, error }) => {
             });
           }}
         >
-          <label>Имя</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} required />
+          <label>Имя *</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="Введите имя" />
           <label>Телефон</label>
-          <input value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+7 (___) ___-__-__" />
           {error && <p className="modal__error">{error}</p>}
           <div className="modal__actions">
-            <button type="submit" className="btn btn--primary">Сохранить</button>
             <button type="button" className="btn btn--secondary" onClick={onClose}>Отмена</button>
+            <button type="submit" className="btn btn--primary">Сохранить</button>
           </div>
         </form>
       </div>
@@ -177,27 +178,33 @@ const HistoryModal = ({ client, loading, items, onClose }) => (
   <div className="modal-overlay" onClick={onClose}>
     <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
       <div className="modal__head">
-        <h3>История клиента: {client?.name}</h3>
+        <h3>История: {client?.name}</h3>
         <button type="button" className="modal__close" onClick={onClose} aria-label="Закрыть">×</button>
       </div>
-      {loading && <Loading />}
-      {!loading && items.length === 0 && <EmptyState title="История пустая" />}
-      {!loading && items.length > 0 && (
-        <div className="orders-table orders-table--main">
-          <div className="orders-table__header">
-            <span className="orders-table__th">ДАТА</span>
-            <span className="orders-table__th">ТИП</span>
-            <span className="orders-table__th">ОПИСАНИЕ</span>
-          </div>
-          {items.map((h, idx) => (
-            <div key={h.id || idx} className="orders-table__row">
-              <span>{h.date || h.created_at || '—'}</span>
-              <span>{h.type || h.event || '—'}</span>
-              <span>{h.description || h.comment || JSON.stringify(h)}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      <div style={{ padding: '1.5rem' }}>
+        {loading && <Loading />}
+        {!loading && items.length === 0 && <EmptyState title="Нет данных" />}
+        {!loading && items.length > 0 && (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th>Тип</th>
+                <th>Описание</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((h, idx) => (
+                <tr key={h.id || idx}>
+                  <td>{h.date || h.created_at || '—'}</td>
+                  <td>{h.type || h.event || '—'}</td>
+                  <td>{h.description || h.comment || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   </div>
 );

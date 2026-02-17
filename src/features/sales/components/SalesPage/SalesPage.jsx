@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useServerQuery } from '../../../../shared/lib';
-import { ConfirmModal, EmptyState, ErrorState, Loading } from '../../../../shared/ui';
+import { ConfirmModal, EmptyState, ErrorState, Loading, useToast } from '../../../../shared/ui';
 import { apiClient } from '../../../../shared/api';
+import './SalesPage.scss';
 
 const SalesPage = () => {
+  const toast = useToast();
   const [queryState] = useState({ page: 1, page_size: 20 });
   const [clients, setClients] = useState([]);
   const [products, setProducts] = useState([]);
@@ -26,7 +28,6 @@ const SalesPage = () => {
   const handleSubmit = async (payload) => {
     setSubmitError('');
     try {
-      console.log('Отправка данных продажи:', payload);
       if (modalSale?.id) {
         await apiClient.patch(`sales/${modalSale.id}/`, payload);
       } else {
@@ -34,8 +35,8 @@ const SalesPage = () => {
       }
       setModalSale(null);
       refetch();
+      toast.show('Сохранено');
     } catch (err) {
-      console.error('Ошибка создания продажи:', err.response?.data);
       const data = err.response?.data;
       const base = data?.error || 'Ошибка';
       const details = data?.details && typeof data.details === 'object'
@@ -52,60 +53,61 @@ const SalesPage = () => {
       await apiClient.delete(`sales/${deleteTarget.id}/`);
       setDeleteTarget(null);
       refetch();
+      toast.show('Удалено');
     } catch (err) {
-      setSubmitError(err.response?.data?.error || 'Ошибка удаления');
+      setSubmitError(err.response?.data?.error || 'Ошибка');
     }
   };
 
   return (
     <div className="page page--sales">
-      <h1 className="page__title">Продажи</h1>
       <div className="orders-nav">
         <span className="orders-nav__current">Продажи</span>
         <span className="orders-nav__sep">→</span>
         <Link to="/shipments" className="orders-nav__link">Отгрузки</Link>
       </div>
 
-      <div className="orders-card">
-        <div className="orders-card__head">
-          <h2 className="orders-card__title">Список продаж</h2>
-          <button type="button" className="btn btn--primary" onClick={() => setModalSale({})}>
-            Создать
-          </button>
-        </div>
+      <div className="page__actions">
+        <button type="button" className="btn btn--primary" onClick={() => setModalSale({})}>
+          + Создать
+        </button>
+      </div>
 
-        {loading && <Loading />}
-        {error && error.status !== 404 && <ErrorState error={error} onRetry={refetch} />}
-        {!loading && (!error || error.status === 404) && items.length === 0 && <EmptyState title="Нет продаж" />}
-        {!loading && (!error || error.status === 404) && items.length > 0 && (
-          <div className="orders-table orders-table--main">
-            <div className="orders-table__header">
-              <span className="orders-table__th">КЛИЕНТ</span>
-              <span className="orders-table__th">ПРОДУКТ</span>
-              <span className="orders-table__th">КОЛ-ВО</span>
-              <span className="orders-table__th">ЦЕНА</span>
-              <span className="orders-table__th orders-table__th--actions">ДЕЙСТВИЯ</span>
-            </div>
+      {loading && <Loading />}
+      {error && error.status !== 404 && <ErrorState error={error} onRetry={refetch} />}
+      {!loading && (!error || error.status === 404) && items.length === 0 && <EmptyState title="Нет продаж" />}
+      {!loading && (!error || error.status === 404) && items.length > 0 && (
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Клиент</th>
+              <th>Продукт</th>
+              <th>Кол-во</th>
+              <th>Цена</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
             {items.map((s) => (
-              <div key={s.id} className="orders-table__row">
-                <span>{s.client_name || s.client?.name || s.client || '—'}</span>
-                <span>{s.product_name || s.product?.name || s.product || '—'}</span>
-                <span>{s.quantity ?? '—'}</span>
-                <span>{s.price ?? s.total ?? '—'}</span>
-                <div className="orders-table__actions">
+              <tr key={s.id}>
+                <td>{s.client_name || s.client?.name || s.client || '—'}</td>
+                <td>{s.product_name || s.product?.name || s.product || '—'}</td>
+                <td>{s.quantity ?? '—'}</td>
+                <td>{s.price ?? s.total ?? '—'} ₽</td>
+                <td>
                   <button type="button" className="btn btn--secondary btn--sm" onClick={() => setModalSale(s)}>
-                    Редактировать
+                    Ред.
                   </button>
                   <button type="button" className="btn btn--danger btn--sm" onClick={() => setDeleteTarget({ id: s.id, name: s.product_name || s.product || `#${s.id}` })}>
                     Удалить
                   </button>
-                </div>
-              </div>
+                </td>
+              </tr>
             ))}
-          </div>
-        )}
-        {submitError && <p className="modal__error">{submitError}</p>}
-      </div>
+          </tbody>
+        </table>
+      )}
+      {submitError && <p className="modal__error">{submitError}</p>}
 
       {modalSale !== null && (
         <SaleModal
@@ -141,7 +143,7 @@ const SaleModal = ({ sale, clients, products, onSubmit, onClose, error }) => {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal__head">
-          <h3>{sale ? 'Редактировать продажу' : 'Создать продажу'}</h3>
+          <h3>{sale ? 'Редактировать' : 'Создать'}</h3>
           <button type="button" className="modal__close" onClick={onClose} aria-label="Закрыть">×</button>
         </div>
         <form
@@ -156,14 +158,14 @@ const SaleModal = ({ sale, clients, products, onSubmit, onClose, error }) => {
             });
           }}
         >
-          <label>Клиент</label>
+          <label>Клиент *</label>
           <select value={client} onChange={(e) => setClient(e.target.value)} required>
             <option value="">— Выберите —</option>
             {clients.map((c) => (
               <option key={c.id} value={c.id}>{c.name || `#${c.id}`}</option>
             ))}
           </select>
-          <label>Продукт (Склад ГП)</label>
+          <label>Продукт (Склад ГП) *</label>
           <select value={product} onChange={(e) => setProduct(e.target.value)} required>
             <option value="">— Выберите —</option>
             {products.map((p) => (
@@ -172,7 +174,7 @@ const SaleModal = ({ sale, clients, products, onSubmit, onClose, error }) => {
               </option>
             ))}
           </select>
-          <label>Количество</label>
+          <label>Количество *</label>
           <input type="number" min="1" step="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
           <label>Цена</label>
           <input type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} />
@@ -180,8 +182,8 @@ const SaleModal = ({ sale, clients, products, onSubmit, onClose, error }) => {
           <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Опционально" />
           {error && <p className="modal__error">{error}</p>}
           <div className="modal__actions">
-            <button type="submit" className="btn btn--primary">Сохранить</button>
             <button type="button" className="btn btn--secondary" onClick={onClose}>Отмена</button>
+            <button type="submit" className="btn btn--primary">Сохранить</button>
           </div>
         </form>
       </div>

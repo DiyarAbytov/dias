@@ -28,7 +28,6 @@ const AnalyticsPage = () => {
 
   return (
     <div className="page page--analytics">
-      <h1 className="page__title">Аналитика</h1>
       <div className="analytics-cards">
         {sales != null && (
           <div className="analytics-card">

@@ -47,6 +47,10 @@ const MainLayout = () => {
   };
 
   const displayName = user?.name || user?.email || 'Пользователь';
+  
+  // Определяем название текущей страницы
+  const currentPage = NAV_ITEMS.find(item => item.path === location.pathname);
+  const pageTitle = currentPage?.label || 'DIAS';
 
   return (
     <div className="main-layout">
@@ -69,6 +73,7 @@ const MainLayout = () => {
       </aside>
       <div className="main-layout__body">
         <header className="main-layout__header">
+          <h1 className="main-layout__page-title">{pageTitle}</h1>
           <div className="main-layout__user">
             <span className="main-layout__user-name">{displayName}</span>
             <button type="button" className="main-layout__logout" onClick={handleLogout}>

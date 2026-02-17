@@ -129,7 +129,6 @@ const ProductionPage = () => {
 
   return (
     <div className="page page--production">
-      <h1 className="page__title">Производство</h1>
       <div className="production-banner">
         При выпуске происходит списание со складов. После выпуска подтвердите — партия передаётся в ОТК.
       </div>

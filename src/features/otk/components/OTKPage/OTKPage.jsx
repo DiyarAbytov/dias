@@ -147,8 +147,6 @@ const OTKPage = () => {
 
   return (
     <div className="page page--otk">
-      <h1 className="page__title">ОТК</h1>
-
       <div className="otk-statuses">
         <span className="otk-statuses__label">Статусы:</span>
         {OTK_STATUSES.map((st, i) => (

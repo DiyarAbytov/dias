@@ -117,7 +117,6 @@ const ShipmentsPage = () => {
 
   return (
     <div className="page page--shipments">
-      <h1 className="page__title">Отгрузки</h1>
       <div className="page__actions">
         <button type="button" className="btn btn--primary" onClick={() => setShipmentModal({})}>
           + Создать отгрузку

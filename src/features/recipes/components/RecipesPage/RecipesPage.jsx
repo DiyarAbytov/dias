@@ -92,7 +92,6 @@ const RecipesPage = () => {
 
   return (
     <div className="page page--recipes">
-      <h1 className="page__title">Рецепты</h1>
       <div className="recipes-banner">
         Используйте только подтверждённые хим. элементы.
       </div>

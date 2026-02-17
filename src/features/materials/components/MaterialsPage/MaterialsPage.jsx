@@ -87,7 +87,6 @@ const MaterialsPage = () => {
 
   return (
     <div className="page page--materials">
-      <h1 className="page__title">Склад сырья</h1>
       <div className="materials-tabs">
         <button
           type="button"
