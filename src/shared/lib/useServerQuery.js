@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { apiClient } from '../api';
 
 const buildQueryString = (queryState) => {
@@ -22,10 +22,15 @@ export const useServerQuery = (url, queryState, options = {}) => {
   const [error, setError] = useState(null);
   const abortRef = useRef(null);
   const requestIdRef = useRef(0);
-  const queryKey = JSON.stringify(queryState || {});
+  const fetcherRef = useRef(fetcher);
+  fetcherRef.current = fetcher;
+
+  const queryKey = useMemo(() => JSON.stringify(queryState || {}), [queryState]);
 
   const fetchData = useCallback(async () => {
-    if (!url || !enabled) return;
+    if (!enabled) return;
+    const currentFetcher = fetcherRef.current;
+    if (!currentFetcher && !url) return;
 
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = new AbortController();
@@ -36,8 +41,8 @@ export const useServerQuery = (url, queryState, options = {}) => {
     try {
       const stableQueryState = queryKey ? JSON.parse(queryKey) : {};
       let payload;
-      if (fetcher) {
-        payload = await fetcher(stableQueryState, abortRef.current.signal);
+      if (currentFetcher) {
+        payload = await currentFetcher(stableQueryState, abortRef.current.signal);
       } else {
         const qs = buildQueryString(stableQueryState);
         const res = await apiClient.get(`${url}${qs}`, {
@@ -57,7 +62,7 @@ export const useServerQuery = (url, queryState, options = {}) => {
     } finally {
       if (id === requestIdRef.current) setLoading(false);
     }
-  }, [url, enabled, fetcher, queryKey]);
+  }, [url, enabled, queryKey]);
 
   useEffect(() => {
     fetchData();

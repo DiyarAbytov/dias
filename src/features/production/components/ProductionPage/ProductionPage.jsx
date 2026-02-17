@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { EmptyState, FilterBar, Loading, ErrorState, ConfirmModal, useToast } from '../../../../shared/ui';
 import { useServerQuery } from '../../../../shared/lib';
 import { getProductionBatches, getProductionOrders, releaseOrder } from '../../api/productionApi';
+import { apiClient } from '../../../../shared/api';
 import './ProductionPage.scss';
 
 const errorToMessage = (err) => {
@@ -95,6 +96,14 @@ const ProductionPage = () => {
     fetcher: (queryState, signal) => getProductionBatches({ query: queryState, signal }),
   });
 
+  const [allOrders, setAllOrders] = useState([]);
+
+  useEffect(() => {
+    apiClient.get('/orders/', { params: { status: 'created', page_size: 100 } })
+      .then((res) => setAllOrders(res.data?.items || []))
+      .catch(() => setAllOrders([]));
+  }, [releaseModalOpen]);
+
   const productName = (o) => o.product_name || o.product?.name || o.product || o.recipe?.name || o.recipe_name || '—';
   const lineName = (o) => o.line?.name || o.line_name || o.line || '—';
   const statusLabel = (s) => {
@@ -117,11 +126,6 @@ const ProductionPage = () => {
     refetchOrders();
     refetchBatches();
   };
-
-  const availableForRelease = orders.filter((o) => {
-    const s = String(o?.status || '').toLowerCase();
-    return s === 'created' || s === 'создан';
-  });
 
   return (
     <div className="page page--production">
@@ -233,7 +237,7 @@ const ProductionPage = () => {
 
       {releaseModalOpen && (
         <ReleaseModal
-          orders={availableForRelease}
+          orders={allOrders}
           onSubmit={(data) => { setReleaseConfirm(data); setReleaseModalOpen(false); }}
           onClose={() => { setReleaseModalOpen(false); setReleaseConfirm(null); setSubmitError(''); }}
           error={submitError}
