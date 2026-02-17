@@ -14,6 +14,9 @@ import { RecipesPage } from '../../features/recipes';
 import { ProductionPage } from '../../features/production';
 import { OTKPage } from '../../features/otk';
 import { WarehousePage } from '../../features/warehouse';
+import { SalesPage } from '../../features/sales';
+import { ShipmentsPage } from '../../features/shipments';
+import { ClientsPage } from '../../features/clients';
 import { STAGE2_TABS_ENABLED } from '../../shared/config/constants';
 
 const PlaceholderPage = ({ title }) => (
@@ -74,9 +77,9 @@ const AppRoutes = () => (
       <Route path="analytics" element={<ProtectedRoute accessKey="analytics"><AnalyticsPage /></ProtectedRoute>} />
       {STAGE2_TABS_ENABLED && (
         <>
-          <Route path="clients" element={<ProtectedRoute accessKey="clients"><PlaceholderPage title="Клиенты" /></ProtectedRoute>} />
-          <Route path="sales" element={<ProtectedRoute accessKey="sales"><PlaceholderPage title="Продажи" /></ProtectedRoute>} />
-          <Route path="shipments" element={<ProtectedRoute accessKey="shipments"><PlaceholderPage title="Отгрузки" /></ProtectedRoute>} />
+          <Route path="clients" element={<ProtectedRoute accessKey="clients"><ClientsPage /></ProtectedRoute>} />
+          <Route path="sales" element={<ProtectedRoute accessKey="sales"><SalesPage /></ProtectedRoute>} />
+          <Route path="shipments" element={<ProtectedRoute accessKey="shipments"><ShipmentsPage /></ProtectedRoute>} />
         </>
       )}
       <Route path="forbidden" element={<PlaceholderPage title="Нет доступа" />} />

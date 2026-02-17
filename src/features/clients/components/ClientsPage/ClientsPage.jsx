@@ -84,14 +84,12 @@ const ClientsPage = () => {
             <div className="orders-table__header">
               <span className="orders-table__th">ИМЯ</span>
               <span className="orders-table__th">ТЕЛЕФОН</span>
-              <span className="orders-table__th">EMAIL</span>
               <span className="orders-table__th orders-table__th--actions">ДЕЙСТВИЯ</span>
             </div>
             {items.map((c) => (
               <div key={c.id} className="orders-table__row">
                 <span>{c.name || c.title || `#${c.id}`}</span>
                 <span>{c.phone || c.phone_number || '—'}</span>
-                <span>{c.email || '—'}</span>
                 <div className="orders-table__actions">
                   <button type="button" className="btn btn--secondary btn--sm" onClick={() => setModalClient(c)}>
                     Редактировать
@@ -143,8 +141,6 @@ const ClientsPage = () => {
 const ClientModal = ({ client, onClose, onSubmit, error }) => {
   const [name, setName] = useState(client?.name || '');
   const [phone, setPhone] = useState(client?.phone || client?.phone_number || '');
-  const [email, setEmail] = useState(client?.email || '');
-  const [comment, setComment] = useState(client?.comment || '');
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -159,8 +155,6 @@ const ClientModal = ({ client, onClose, onSubmit, error }) => {
             onSubmit({
               name: name.trim(),
               phone: phone.trim() || undefined,
-              email: email.trim() || undefined,
-              comment: comment.trim() || undefined,
             });
           }}
         >
@@ -168,10 +162,6 @@ const ClientModal = ({ client, onClose, onSubmit, error }) => {
           <input value={name} onChange={(e) => setName(e.target.value)} required />
           <label>Телефон</label>
           <input value={phone} onChange={(e) => setPhone(e.target.value)} />
-          <label>Email</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <label>Комментарий</label>
-          <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
           {error && <p className="modal__error">{error}</p>}
           <div className="modal__actions">
             <button type="submit" className="btn btn--primary">Сохранить</button>

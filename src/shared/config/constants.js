@@ -2,7 +2,7 @@
  * Этап 2: Клиенты, Продажи, Отгрузки.
  * Скрыты, пока бизнес-логика не утверждена.
  */
-export const STAGE2_TABS_ENABLED = false;
+export const STAGE2_TABS_ENABLED = true;
 
 /** Доступы для ролей (access_keys по документации) */
 export const ACCESS_KEYS = [

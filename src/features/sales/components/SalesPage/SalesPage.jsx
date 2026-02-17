@@ -7,6 +7,7 @@ import { apiClient } from '../../../../shared/api';
 const SalesPage = () => {
   const [queryState] = useState({ page: 1, page_size: 20 });
   const [clients, setClients] = useState([]);
+  const [products, setProducts] = useState([]);
   const [modalSale, setModalSale] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [submitError, setSubmitError] = useState('');
@@ -17,11 +18,15 @@ const SalesPage = () => {
     apiClient.get('clients/', { params: { page_size: 500 } })
       .then((res) => setClients(res.data?.items || []))
       .catch(() => setClients([]));
+    apiClient.get('warehouse/batches/', { params: { page_size: 500, status: 'available' } })
+      .then((res) => setProducts(res.data?.items || []))
+      .catch(() => setProducts([]));
   }, []);
 
   const handleSubmit = async (payload) => {
     setSubmitError('');
     try {
+      console.log('Отправка данных продажи:', payload);
       if (modalSale?.id) {
         await apiClient.patch(`sales/${modalSale.id}/`, payload);
       } else {
@@ -30,6 +35,7 @@ const SalesPage = () => {
       setModalSale(null);
       refetch();
     } catch (err) {
+      console.error('Ошибка создания продажи:', err.response?.data);
       const data = err.response?.data;
       const base = data?.error || 'Ошибка';
       const details = data?.details && typeof data.details === 'object'
@@ -105,6 +111,7 @@ const SalesPage = () => {
         <SaleModal
           sale={modalSale?.id ? modalSale : null}
           clients={clients}
+          products={products}
           onSubmit={handleSubmit}
           onClose={() => { setModalSale(null); setSubmitError(''); }}
           error={submitError}
@@ -123,9 +130,9 @@ const SalesPage = () => {
   );
 };
 
-const SaleModal = ({ sale, clients, onSubmit, onClose, error }) => {
+const SaleModal = ({ sale, clients, products, onSubmit, onClose, error }) => {
   const [client, setClient] = useState(sale?.client_id ?? sale?.client?.id ?? sale?.client ?? '');
-  const [product, setProduct] = useState(sale?.product_name ?? sale?.product ?? '');
+  const [product, setProduct] = useState(sale?.product_id ?? sale?.product?.id ?? sale?.product ?? '');
   const [quantity, setQuantity] = useState(sale?.quantity ?? '');
   const [price, setPrice] = useState(sale?.price ?? '');
   const [comment, setComment] = useState(sale?.comment ?? '');
@@ -142,7 +149,7 @@ const SaleModal = ({ sale, clients, onSubmit, onClose, error }) => {
             e.preventDefault();
             onSubmit({
               client: client ? Number(client) : undefined,
-              product,
+              product: product ? Number(product) : undefined,
               quantity: quantity ? Number(quantity) : undefined,
               price: price ? Number(price) : undefined,
               comment: comment.trim() || undefined,
@@ -156,14 +163,21 @@ const SaleModal = ({ sale, clients, onSubmit, onClose, error }) => {
               <option key={c.id} value={c.id}>{c.name || `#${c.id}`}</option>
             ))}
           </select>
-          <label>Продукт</label>
-          <input value={product} onChange={(e) => setProduct(e.target.value)} required />
+          <label>Продукт (Склад ГП)</label>
+          <select value={product} onChange={(e) => setProduct(e.target.value)} required>
+            <option value="">— Выберите —</option>
+            {products.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.product_name || p.product?.name || p.product || `#${p.id}`} - {p.quantity ?? p.available_quantity ?? 0} шт
+              </option>
+            ))}
+          </select>
           <label>Количество</label>
           <input type="number" min="1" step="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
           <label>Цена</label>
           <input type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} />
           <label>Комментарий</label>
-          <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
+          <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Опционально" />
           {error && <p className="modal__error">{error}</p>}
           <div className="modal__actions">
             <button type="submit" className="btn btn--primary">Сохранить</button>
