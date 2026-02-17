@@ -28,22 +28,12 @@ export const getOtkHistory = async ({ query = {}, signal } = {}) => {
  * Бэкенд: OtkCheck, batch.otk_status (accepted/rejected), при принятом > 0 — запись на склад ГП.
  */
 export const acceptBatch = (batchId, data) =>
-  apiClient.post('/otk/check/', {
-    batchId,
-    accepted: data.accepted,
-    rejected: data.rejected ?? 0,
-    rejectReason: data.rejectReason || null,
-    inspectorId: data.inspectorId || null,
-    comment: data.comment || null,
-  }).catch((err) => {
-    if (!isEndpointMissing(err)) throw err;
-    return apiClient.post(`/batches/${batchId}/otk_accept/`, {
-      otk_accepted: data.accepted,
-      otk_defect: data.rejected ?? 0,
-      otk_defect_reason: data.rejectReason || null,
-      otk_comment: data.comment || null,
-      otk_status: (data.rejected > 0 && data.accepted === 0 ? 'rejected' : 'accepted'),
-      otk_inspector: data.inspectorId || null,
-      otk_checked_at: new Date().toISOString(),
-    });
+  apiClient.post(`/batches/${batchId}/otk_accept/`, {
+    otk_accepted: data.accepted,
+    otk_defect: data.rejected ?? 0,
+    otk_defect_reason: data.rejectReason || null,
+    otk_comment: data.comment || null,
+    otk_status: (data.rejected > 0 && data.accepted === 0 ? 'rejected' : 'accepted'),
+    otk_inspector: data.inspectorId || null,
+    otk_checked_at: new Date().toISOString(),
   });

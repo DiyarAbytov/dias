@@ -5,6 +5,7 @@ import { STAGE2_TABS_ENABLED, ACCESS_LABELS } from '../../../shared/config/const
 import './MainLayout.scss';
 
 const MVP_NAV = [
+  { path: '/analytics', accessKey: 'analytics' },
   { path: '/users', accessKey: 'users' },
   { path: '/lines', accessKey: 'lines' },
   { path: '/materials', accessKey: 'materials' },
@@ -14,7 +15,6 @@ const MVP_NAV = [
   { path: '/production', accessKey: 'production' },
   { path: '/otk', accessKey: 'otk' },
   { path: '/warehouse', accessKey: 'warehouse' },
-  { path: '/analytics', accessKey: 'analytics' },
 ];
 
 const STAGE2_NAV = [

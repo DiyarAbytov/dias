@@ -144,7 +144,7 @@ const UsersPage = () => {
   return (
     <div className="page page--users">
       <div className="page__header">
-        <h1 className="page__title">Пользователи</h1>
+        <h1 className="page__title">Сотрудники</h1>
         <div className="page__tabs">
           <button
             type="button"
@@ -158,18 +158,18 @@ const UsersPage = () => {
             className={`page__tab ${activeTab === 'users' ? 'page__tab--active' : ''}`}
             onClick={() => setActiveTab('users')}
           >
-            Сотрудники
+            Список
           </button>
         </div>
         <div className="page__actions">
           {activeTab === 'roles' && (
             <button type="button" className="btn btn--primary" onClick={() => setRoleModal({})}>
-              + Создать роль
+              + Создать
             </button>
           )}
           {activeTab === 'users' && (
             <button type="button" className="btn btn--primary" onClick={() => setUserModal({})}>
-              + Добавить сотрудника
+              + Добавить
             </button>
           )}
         </div>
@@ -188,7 +188,6 @@ const UsersPage = () => {
                 <tr>
                   <th>ID</th>
                   <th>Название</th>
-                  <th>Описание</th>
                   <th></th>
                 </tr>
               </thead>
@@ -197,7 +196,6 @@ const UsersPage = () => {
                   <tr key={r.id}>
                     <td>{r.id}</td>
                     <td>{r.name}</td>
-                    <td>{r.description || '—'}</td>
                     <td>
                       <button
                         type="button"
@@ -321,8 +319,6 @@ const UsersPage = () => {
       {roleModal && (
         <RoleFormModal
           role={roleModal?.id ? roleModal : null}
-          accessKeys={ACCESS_KEYS}
-          accessLabels={ACCESS_LABELS}
           onSubmit={handleRoleSubmit}
           onClose={() => { setRoleModal(null); setSubmitError(''); }}
           error={submitError}
@@ -347,14 +343,14 @@ const AccessModal = ({ user, accessKeys, accessLabels, roles, onSave, onClose, e
   const [saving, setSaving] = useState(false);
 
   React.useEffect(() => {
-    if (!user?.role) {
+    if (!user?.id) {
       setLoading(false);
       return;
     }
     const load = async () => {
       try {
         const { apiClient } = await import('../../../../shared/api');
-        const res = await apiClient.get(`/roles/${user.role}/`);
+        const res = await apiClient.get(`/users/${user.id}/`);
         const acc = res.data?.accesses || [];
         const keys = acc.map((a) => a.access_key ?? a);
         setSelected(new Set(keys));
@@ -365,7 +361,7 @@ const AccessModal = ({ user, accessKeys, accessLabels, roles, onSave, onClose, e
       }
     };
     load();
-  }, [user?.role]);
+  }, [user?.id]);
 
   const toggle = (key) => {
     setSelected((prev) => {
@@ -376,20 +372,11 @@ const AccessModal = ({ user, accessKeys, accessLabels, roles, onSave, onClose, e
     });
   };
 
-  const hasRole = !!user?.role;
-
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
         <h3>Доступы: {user?.name}</h3>
-        {!hasRole ? (
-          <>
-            <p>Назначьте роль пользователю в форме «Редактировать», затем настройте доступы.</p>
-            <div className="modal__actions">
-              <button type="button" className="btn btn--secondary" onClick={onClose}>Закрыть</button>
-            </div>
-          </>
-        ) : loading ? (
+        {loading ? (
           <p>Загрузка...</p>
         ) : (
           <form
@@ -435,7 +422,6 @@ const UserFormModal = ({ user, roles, onSubmit, onClose, error }) => {
   const [name, setName] = useState(user?.name ?? '');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState(user?.role != null ? String(user.role) : '');
-  const [isActive, setIsActive] = useState(user?.is_active !== false);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -444,7 +430,7 @@ const UserFormModal = ({ user, roles, onSubmit, onClose, error }) => {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            const data = { name, role: role ? Number(role) : null, is_active: isActive };
+            const data = { name, role: role ? Number(role) : null };
             if (password) data.password = password;
             if (!user && !password) return;
             onSubmit(data);
@@ -466,14 +452,6 @@ const UserFormModal = ({ user, roles, onSubmit, onClose, error }) => {
               <option key={r.id} value={r.id}>{r.name}</option>
             ))}
           </select>
-          <label className="modal__checkbox-label">
-            <input
-              type="checkbox"
-              checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
-            />
-            Активен
-          </label>
           {error && <p className="modal__error">{error}</p>}
           <div className="modal__actions">
             <button type="button" className="btn btn--secondary" onClick={onClose}>Отмена</button>
@@ -485,60 +463,21 @@ const UserFormModal = ({ user, roles, onSubmit, onClose, error }) => {
   );
 };
 
-const RoleFormModal = ({ role, accessKeys, accessLabels, onSubmit, onClose, error }) => {
+const RoleFormModal = ({ role, onSubmit, onClose, error }) => {
   const [name, setName] = useState(role?.name ?? '');
-  const [description, setDescription] = useState(role?.description ?? '');
-  const [selectedAccess, setSelectedAccess] = useState(new Set());
-
-  React.useEffect(() => {
-    if (role?.accesses) {
-      const keys = role.accesses.map((a) => a.access_key ?? a);
-      setSelectedAccess(new Set(keys));
-    } else if (role?.id) {
-      setSelectedAccess(new Set());
-    }
-  }, [role?.id, role?.accesses]);
-
-  const toggleAccess = (key) => {
-    setSelectedAccess((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>{role ? 'Редактировать роль' : 'Создать роль'}</h3>
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            const data = { name, description: description || undefined };
-            if (!role || selectedAccess.size > 0) {
-              data.access_keys = Array.from(selectedAccess);
-            }
-            onSubmit(data);
+            onSubmit({ name });
           }}
         >
           <label>Название *</label>
           <input value={name} onChange={(e) => setName(e.target.value)} required />
-          <label>Описание</label>
-          <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Описание роли" />
-          <label className="modal__access-label">Доступы * {!role && '(обязательно при создании)'}</label>
-          <div className="access-keys">
-            {accessKeys.map((key) => (
-              <label key={key} className="access-keys__item">
-                <input
-                  type="checkbox"
-                  checked={selectedAccess.has(key)}
-                  onChange={() => toggleAccess(key)}
-                />
-                {accessLabels[key] || key}
-              </label>
-            ))}
-          </div>
           {error && <p className="modal__error">{error}</p>}
           <div className="modal__actions">
             <button type="button" className="btn btn--secondary" onClick={onClose}>Отмена</button>

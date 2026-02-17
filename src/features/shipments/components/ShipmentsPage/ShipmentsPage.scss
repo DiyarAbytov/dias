@@ -1,0 +1,137 @@
+@use '../../../../shared/styles/variables' as *;
+@use '../../../../shared/styles/mixins' as *;
+
+.page--shipments {
+  .page__actions {
+    margin-bottom: 1rem;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+
+    &--pending {
+      background: rgba(255, 193, 7, 0.2);
+      color: #ffc107;
+    }
+
+    &--shipped {
+      background: rgba(33, 150, 243, 0.2);
+      color: #2196f3;
+    }
+
+    &--delivered {
+      background: rgba(76, 175, 80, 0.2);
+      color: #4caf50;
+    }
+  }
+
+  .data-table {
+    td:last-child {
+      white-space: nowrap;
+
+      .btn {
+        margin-right: 0.5rem;
+      }
+    }
+  }
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  @include flex-center;
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  min-width: 400px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+
+  h3 {
+    margin: 0 0 1rem;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+
+  input[type="text"],
+  input[type="number"],
+  input[type="date"],
+  select,
+  textarea {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    margin-bottom: 1rem;
+    background: var(--bg) !important;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text) !important;
+    font-size: 0.95rem;
+    appearance: none;
+
+    &::placeholder {
+      color: var(--muted);
+    }
+  }
+
+  select {
+    cursor: pointer;
+  }
+
+  textarea {
+    resize: vertical;
+  }
+
+  &__error {
+    color: var(--danger);
+    font-size: 0.9rem;
+    margin: 0 0 1rem;
+  }
+
+  &__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+  }
+
+  .btn--secondary {
+    background: var(--border);
+    border-color: var(--border);
+    color: var(--text);
+
+    &:hover {
+      background: var(--muted);
+      border-color: var(--muted);
+    }
+  }
+
+  .btn--primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+
+    &:hover {
+      opacity: 0.9;
+    }
+  }
+}

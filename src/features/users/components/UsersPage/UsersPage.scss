@@ -203,5 +203,12 @@
     cursor: pointer;
     font-size: 0.95rem;
     color: var(--text);
+    font-weight: 500;
+    
+    input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
   }
 }

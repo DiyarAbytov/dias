@@ -22,16 +22,16 @@ export const ACCESS_KEYS = [
 ];
 
 export const ACCESS_LABELS = {
-  users: 'Пользователи',
+  analytics: 'Аналитика',
+  users: 'Сотрудники',
   lines: 'Линии',
-  materials: 'Склад сырья',
+  materials: 'Сырьё',
   chemistry: 'Химия',
   recipes: 'Рецепты',
   orders: 'Заказы',
   production: 'Производство',
   otk: 'ОТК',
   warehouse: 'Склад ГП',
-  analytics: 'Аналитика',
   clients: 'Клиенты',
   sales: 'Продажи',
   shipments: 'Отгрузки',
